@@ -1,5 +1,6 @@
 package com.demo.hmscomposeapp.map
 
+import android.os.Bundle
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -15,7 +16,7 @@ import com.huawei.hms.maps.model.LatLng
 fun HmsMap(
     initialLocation: LatLng = LatLng(0.0, 0.0),
     modifier: Modifier = Modifier,
-    onMapReady: (HuaweiMap: HuaweiMap) -> Unit
+    //onMapReady: (HuaweiMap: HuaweiMap) -> Unit
 ) {
 
     val context = LocalContext.current
@@ -30,7 +31,7 @@ fun HmsMap(
     AndroidView(
         factory = {
             mapView.apply {
-                mapView.getMapAsync(onMapReady)
+                mapView.getMapAsync { hMap -> hMap }
             }
         },
         modifier = modifier
