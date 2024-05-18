@@ -1,20 +1,19 @@
 package com.demo.hmscomposeapp
 
 import android.Manifest
-import android.content.Context
+import android.R
+import android.content.Intent
 import android.content.IntentSender.SendIntentException
 import android.content.pm.PackageManager
 import android.util.Log
 import androidx.core.app.ActivityCompat
-import com.huawei.hmf.tasks.OnCompleteListener
+import androidx.core.app.ActivityCompat.startActivityForResult
 import com.huawei.hmf.tasks.OnFailureListener
 import com.huawei.hmf.tasks.OnSuccessListener
 import com.huawei.hms.common.ApiException
 import com.huawei.hms.common.ResolvableApiException
 import com.huawei.hms.location.*
 import com.huawei.hms.maps.MapsInitializer
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.launch
 
 
 class HmsInit(mainActivity: MainActivity) {
@@ -122,5 +121,40 @@ class HmsInit(mainActivity: MainActivity) {
         var isNeedBle = false
 
     }
+
+    fun showInAppComment() {
+        try {
+            val intent = Intent("com.huawei.appmarket.intent.action.guidecomment")
+            intent.setPackage("com.huawei.appmarket")
+            startActivityForResult(mainActivity, intent, 1001, null)
+        } catch (e: Exception) {
+            Log.d("HMS--", "initInAppComment: " + e.message)
+        }
+    }
+
+     fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == 1001 && (resultCode == 102 || resultCode == 103)) {
+            //showMessage(getString(R.string.feedback_message))
+        }
+    }
+
+    // Second solution
+    fun showInAppCommentSecond() {
+        try {
+            val intent = Intent("com.huawei.appmarket.intent.action.guidecomment")
+            intent.setPackage("com.huawei.appmarket")
+            startActivity(intent)
+        } catch (e: Exception) {
+            Log.d("HMS--", "initInAppComment: " + e.message)
+        }
+    }
+
+    private fun startActivity(intent: Intent) {
+        mainActivity.startActivity(intent)
+    }
+
+
+
 
 }
