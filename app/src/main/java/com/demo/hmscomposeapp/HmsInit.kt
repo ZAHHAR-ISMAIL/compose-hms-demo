@@ -123,36 +123,19 @@ class HmsInit(mainActivity: MainActivity) {
     }
 
     fun showInAppComment() {
-        try {
-            val intent = Intent("com.huawei.appmarket.intent.action.guidecomment")
-            intent.setPackage("com.huawei.appmarket")
-            startActivityForResult(mainActivity, intent, 1001, null)
-        } catch (e: Exception) {
-            Log.d("HMS--", "initInAppComment: " + e.message)
-        }
+        val intent = Intent("com.huawei.appmarket.intent.action.guidecomment")
+        intent.setPackage("com.huawei.appmarket")
+        resultLauncher.launch(intent)
     }
 
-     fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == 1001 && (resultCode == 102 || resultCode == 103)) {
-            //showMessage(getString(R.string.feedback_message))
-        }
-    }
+    private var resultLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            Log.d("HMS--", "InAppComment Result Code : " + result.resultCode)
 
-    // Second solution
-    fun showInAppCommentSecond() {
-        try {
-            val intent = Intent("com.huawei.appmarket.intent.action.guidecomment")
-            intent.setPackage("com.huawei.appmarket")
-            startActivity(intent)
-        } catch (e: Exception) {
-            Log.d("HMS--", "initInAppComment: " + e.message)
         }
-    }
 
-    private fun startActivity(intent: Intent) {
-        mainActivity.startActivity(intent)
-    }
+    
+
 
 
 
