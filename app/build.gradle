@@ -55,7 +55,7 @@ android {
         compose true
     }
     composeOptions {
-        kotlinCompilerExtensionVersion '1.2.0'
+        kotlinCompilerExtensionVersion '1.5.1'
     }
     packagingOptions {
         resources {
@@ -82,5 +82,7 @@ dependencies {
 
     implementation 'com.huawei.hms:maps:6.11.2.301'
     implementation 'com.huawei.hms:location:6.12.0.300'
+
+//    implementation 'com.huawei.agconnect:agconnect-apms:1.6.3.300'
 
 }
