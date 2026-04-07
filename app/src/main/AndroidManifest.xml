@@ -24,6 +24,7 @@
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/Theme.HmsComposeApp"
+        tools:replace="android:allowBackup"
         tools:targetApi="31">
         <activity
             android:name=".MainActivity"
@@ -36,6 +37,10 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity
+            android:name=".locationpicker.SelectLocationActivity"
+            android:exported="false"
+            android:theme="@style/Theme.HmsComposeApp" />
     </application>
 
 </manifest>

@@ -1,160 +1,154 @@
 package com.demo.hmscomposeapp
 
 import android.Manifest
-import android.R
-import android.content.Intent
-import android.content.IntentSender.SendIntentException
 import android.content.pm.PackageManager
+import android.location.Location
+import android.os.Looper
 import android.util.Log
 import androidx.core.app.ActivityCompat
-import androidx.core.app.ActivityCompat.startActivityForResult
-import com.huawei.hmf.tasks.OnFailureListener
-import com.huawei.hmf.tasks.OnSuccessListener
 import com.huawei.hms.common.ApiException
 import com.huawei.hms.common.ResolvableApiException
-import com.huawei.hms.location.*
+import com.huawei.hms.location.FusedLocationProviderClient
+import com.huawei.hms.location.LocationAvailability
+import com.huawei.hms.location.LocationCallback
+import com.huawei.hms.location.LocationRequest
+import com.huawei.hms.location.LocationResult
+import com.huawei.hms.location.LocationServices
+import com.huawei.hms.location.LocationSettingsRequest
+import com.huawei.hms.location.LocationSettingsStatusCodes
 import com.huawei.hms.maps.MapsInitializer
 
+class HmsInit(private val activity: MainActivity) {
 
-class HmsInit(mainActivity: MainActivity) {
+    private val settingsClient = LocationServices.getSettingsClient(activity)
+    private val fusedLocationProviderClient: FusedLocationProviderClient =
+        LocationServices.getFusedLocationProviderClient(activity)
 
-    val mainActivity = mainActivity
-    var settingsClient = LocationServices.getSettingsClient(mainActivity)
-
-    // Define a fusedLocationProviderClient object.
-    private lateinit var fusedLocationProviderClient: FusedLocationProviderClient
-
-
-
-
-    companion object {
-        private const val TAG = "HMS--LOCATION"
+    fun initializeMaps() {
+        MapsInitializer.initialize(activity)
     }
 
-    fun hmsMapInit() {
-        MapsInitializer.initialize(mainActivity)
-    }
-
-     fun checkLocationPermissions(): Boolean {
-        val fineLocationPermission = ActivityCompat.checkSelfPermission(
-            mainActivity,
-            Manifest.permission.ACCESS_FINE_LOCATION
-        ) == PackageManager.PERMISSION_GRANTED
-        val coarseLocationPermission = ActivityCompat.checkSelfPermission(
-            mainActivity,
-            Manifest.permission.ACCESS_COARSE_LOCATION
-        ) == PackageManager.PERMISSION_GRANTED
-        return fineLocationPermission && coarseLocationPermission
-    }
-
-     fun requestLocationPermissions() {
-        val permissions = arrayOf(
-            Manifest.permission.ACCESS_FINE_LOCATION,
-            Manifest.permission.ACCESS_COARSE_LOCATION
-        )
-        ActivityCompat.requestPermissions(mainActivity, permissions, 1)
-    }
-
-
-     fun chekLocationSettings() {
-
-        val builder = LocationSettingsRequest.Builder()
-        var mLocationRequest = LocationRequest()
-
-        builder.addLocationRequest(mLocationRequest)
-        val locationSettingsRequest = builder.build()
-
-        // Check the device location settings.
-        settingsClient.checkLocationSettings(locationSettingsRequest)
-            // Define the listener for success in calling the API for checking device location settings.
-            .addOnSuccessListener(OnSuccessListener { locationSettingsResponse ->
-                val locationSettingsStates = locationSettingsResponse.locationSettingsStates
-                val stringBuilder = StringBuilder()
-                // Check whether the location function is enabled.
-                stringBuilder.append("isLocationUsable=")
-                    .append(locationSettingsStates.isLocationUsable)
-                // Check whether HMS Core (APK) is available.
-                stringBuilder.append(",\nisHMSLocationUsable=")
-                    .append(locationSettingsStates.isHMSLocationUsable)
-                Log.i(TAG, "checkLocationSetting onComplete:$stringBuilder")
-            })
-            .addOnFailureListener(OnFailureListener { e ->
-                // Processing when the device is a Huawei device and has HMS Core (APK) installed, but its settings do not meet the location requirements.
-                val statusCode: Int = (e as ApiException).getStatusCode()
-                when (statusCode) {
-                    LocationSettingsStatusCodes.RESOLUTION_REQUIRED -> try {
-                        val rae: ResolvableApiException = e as ResolvableApiException
-                        // Call startResolutionForResult to display a popup asking the user to enable related permission.
-                        rae.startResolutionForResult(mainActivity, 0)
-                    } catch (sie: SendIntentException) {
-                        // TODO
-                    }
-                }
-            })
-    }
-
-
-      fun getHmsLocation(){
-          fusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(mainActivity)
-          val lastLocation =
-              fusedLocationProviderClient.lastLocation
-          lastLocation.addOnSuccessListener(OnSuccessListener { location ->
-              if (location == null) {
-                  return@OnSuccessListener
-              }
-
-              Log.d(TAG, "lat : " + location.latitude + " long : " + location.longitude)
-              // TODO: Define logic for processing the Location object upon success.
-              return@OnSuccessListener
-          })
-              // Define callback for failure in obtaining the last known location.
-              .addOnFailureListener {
-                  // TODO: Define callback for API call failure.
-              }
-
-
-      }
-
-    private class CheckSettingsRequest {
-        var locationRequest: LocationRequest = LocationRequest()
-        var isAlwaysShow = false
-        var isNeedBle = false
-
-    }
-
-//    fun showInAppComment() {
-//        try {
-//            val intent = Intent("com.huawei.appmarket.intent.action.guidecomment")
-//            intent.setPackage("com.huawei.appmarket")
-//            startActivityForResult(mainActivity, intent, 1001, null)
-//        } catch (e: Exception) {
-//            Log.d("HMS--", "initInAppComment: " + e.message)
-//        }
-//    }
-
-//     fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-//        super.onActivityResult(requestCode, resultCode, data)
-//        if (requestCode == 1001 && (resultCode == 102 || resultCode == 103)) {
-//            //showMessage(getString(R.string.feedback_message))
-//        }
-//    }
-
-    // Second solution
-    fun showInAppCommentSecond() {
-        try {
-            val intent = Intent("com.huawei.appmarket.intent.action.guidecomment")
-            intent.setPackage("com.huawei.appmarket")
-            startActivity(intent)
-        } catch (e: Exception) {
-            Log.d("HMS--", "initInAppComment: " + e.message)
+    fun hasLocationPermissions(): Boolean {
+        return LOCATION_PERMISSIONS.all { permission ->
+            ActivityCompat.checkSelfPermission(activity, permission) == PackageManager.PERMISSION_GRANTED
         }
     }
 
-    private fun startActivity(intent: Intent) {
-        mainActivity.startActivity(intent)
+    fun requestLocationPermissions() {
+        ActivityCompat.requestPermissions(
+            activity,
+            LOCATION_PERMISSIONS,
+            LOCATION_PERMISSION_REQUEST_CODE
+        )
     }
 
+    fun checkLocationSettings() {
+        val locationRequest = LocationRequest().apply {
+            priority = LocationRequest.PRIORITY_HIGH_ACCURACY
+        }
+        val settingsRequest = LocationSettingsRequest.Builder()
+            .addLocationRequest(locationRequest)
+            .build()
 
+        settingsClient.checkLocationSettings(settingsRequest)
+            .addOnSuccessListener { response ->
+                val states = response.locationSettingsStates
+                Log.i(
+                    TAG,
+                    "checkLocationSetting usable=${states.isLocationUsable}, hmsUsable=${states.isHMSLocationUsable}"
+                )
+            }
+            .addOnFailureListener(::handleLocationSettingsFailure)
+    }
 
+    fun getHmsLocation(
+        onSuccess: (Location) -> Unit = {},
+        onFailure: (Exception?) -> Unit = {}
+    ) {
+        fusedLocationProviderClient.lastLocation
+            .addOnSuccessListener { location ->
+                if (location != null) {
+                    logLocation("last", location)
+                    onSuccess(location)
+                } else {
+                    requestSingleLocationUpdate(onSuccess, onFailure)
+                }
+            }
+            .addOnFailureListener(onFailure)
+    }
 
+    private fun requestSingleLocationUpdate(
+        onSuccess: (Location) -> Unit,
+        onFailure: (Exception?) -> Unit
+    ) {
+        val locationRequest = LocationRequest().apply {
+            interval = 1000
+            fastestInterval = 500
+            numUpdates = 1
+            priority = LocationRequest.PRIORITY_HIGH_ACCURACY
+        }
+
+        var handled = false
+        val callback = object : LocationCallback() {
+            override fun onLocationResult(locationResult: LocationResult?) {
+                if (handled) return
+                handled = true
+                fusedLocationProviderClient.removeLocationUpdates(this)
+
+                val location = locationResult?.lastLocation
+                if (location == null) {
+                    onFailure(null)
+                    return
+                }
+
+                logLocation("single update", location)
+                onSuccess(location)
+            }
+
+            override fun onLocationAvailability(locationAvailability: LocationAvailability?) {
+                if (handled || locationAvailability?.isLocationAvailable != false) return
+                handled = true
+                fusedLocationProviderClient.removeLocationUpdates(this)
+                onFailure(null)
+            }
+        }
+
+        fusedLocationProviderClient.requestLocationUpdates(
+            locationRequest,
+            callback,
+            Looper.getMainLooper()
+        ).addOnFailureListener { exception ->
+            if (!handled) {
+                handled = true
+                onFailure(exception)
+            }
+        }
+    }
+
+    private fun handleLocationSettingsFailure(exception: Exception) {
+        val apiException = exception as? ApiException ?: return
+        if (apiException.statusCode != LocationSettingsStatusCodes.RESOLUTION_REQUIRED) return
+
+        val resolvableException = apiException as? ResolvableApiException ?: return
+        try {
+            resolvableException.startResolutionForResult(activity, LOCATION_SETTINGS_REQUEST_CODE)
+        } catch (sendIntentException: Exception) {
+            Log.w(TAG, "Unable to resolve location settings", sendIntentException)
+        }
+    }
+
+    private fun logLocation(source: String, location: Location) {
+        Log.d(TAG, "$source lat=${location.latitude} long=${location.longitude}")
+    }
+
+    companion object {
+        const val LOCATION_PERMISSION_REQUEST_CODE = 1
+
+        private const val TAG = "HMS--LOCATION"
+        private const val LOCATION_SETTINGS_REQUEST_CODE = 0
+        private val LOCATION_PERMISSIONS = arrayOf(
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.ACCESS_COARSE_LOCATION
+        )
+    }
 }
