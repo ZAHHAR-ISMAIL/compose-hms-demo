@@ -1,60 +1,65 @@
 package com.demo.hmscomposeapp.locationpicker
 
+import android.app.Dialog
+import android.content.Context
 import android.os.Bundle
-import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.TextView
-import androidx.core.os.bundleOf
-import androidx.fragment.app.DialogFragment
-import androidx.lifecycle.lifecycleScope
 import com.demo.hmscomposeapp.R
 import com.huawei.hms.maps.CameraUpdateFactory
 import com.huawei.hms.maps.HuaweiMap
-import com.huawei.hms.maps.SupportMapFragment
+import com.huawei.hms.maps.MapView
+import com.huawei.hms.maps.model.LatLng as HuaweiLatLng
 import com.huawei.hms.maps.model.Marker
 import com.huawei.hms.maps.model.MarkerOptions
-import com.huawei.hms.maps.model.LatLng as HuaweiLatLng
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
-class SelectLocationMapDialog : DialogFragment(R.layout.h_map) {
+class SelectLocationMapDialog(
+    context: Context,
+    private val initialLocation: LocationDetails,
+    private val onLocationConfirmed: (LocationDetails) -> Unit
+) : Dialog(context) {
 
-    private var huaweiMap: HuaweiMap? = null
-    private var marker: Marker? = null
-    private var currentSelection: LocationDetails? = null
+    private val dialogScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
+    private lateinit var mapView: MapView
     private lateinit var selectedAddressView: TextView
     private lateinit var selectedMetaView: TextView
     private lateinit var confirmButton: Button
 
+    private var huaweiMap: HuaweiMap? = null
+    private var marker: Marker? = null
+    private var currentSelection: LocationDetails = initialLocation
+    private var mapLifecycleReleased = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        currentSelection = arguments?.parcelable(Constants.LOCATION_DETAILS_PARAM)
-    }
+        setContentView(R.layout.h_map)
+        window?.setLayout(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT
+        )
 
-    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        super.onViewCreated(view, savedInstanceState)
+        mapView = findViewById(R.id.huaweiMapView)
+        selectedAddressView = findViewById(R.id.selectedAddressText)
+        selectedMetaView = findViewById(R.id.selectedMetaText)
+        confirmButton = findViewById(R.id.confirmLocationButton)
 
-        selectedAddressView = view.findViewById(R.id.selectedAddressText)
-        selectedMetaView = view.findViewById(R.id.selectedMetaText)
-        confirmButton = view.findViewById(R.id.confirmLocationButton)
-
-        view.findViewById<Button>(R.id.cancelLocationButton).setOnClickListener {
+        findViewById<Button>(R.id.cancelLocationButton).setOnClickListener {
             dismiss()
         }
         confirmButton.setOnClickListener {
-            confirmSelection()
+            onLocationConfirmed(currentSelection)
+            dismiss()
         }
 
-        val mapFragment = childFragmentManager.findFragmentById(R.id.huaweiMapFragment)
-            as? SupportMapFragment
-            ?: SupportMapFragment.newInstance().also { fragment ->
-                childFragmentManager.beginTransaction()
-                    .replace(R.id.huaweiMapFragment, fragment)
-                    .commitNow()
-            }
-
-        mapFragment.getMapAsync { map ->
+        mapView.onCreate(savedInstanceState)
+        mapView.getMapAsync { map ->
             huaweiMap = map
             map.uiSettings.isCompassEnabled = true
             map.uiSettings.isZoomControlsEnabled = true
@@ -65,23 +70,33 @@ class SelectLocationMapDialog : DialogFragment(R.layout.h_map) {
 
     override fun onStart() {
         super.onStart()
-        dialog?.window?.setLayout(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.MATCH_PARENT
-        )
+        mapView.onStart()
+        mapView.onResume()
+    }
+
+    override fun onStop() {
+        mapView.onPause()
+        mapView.onStop()
+        super.onStop()
+    }
+
+    override fun dismiss() {
+        releaseMapLifecycleIfNeeded()
+        dialogScope.cancel()
+        super.dismiss()
     }
 
     private fun renderInitialSelection() {
-        val target = currentSelection?.latLng ?: LatLongitude(
+        val target = currentSelection.latLng ?: LatLongitude(
             latitude = Constants.DEFAULT_LATITUDE,
             longitude = Constants.DEFAULT_LONGITUDE
         )
         updateMapSelection(target.toHuaweiLatLng(), moveCamera = true)
 
-        if (currentSelection?.address.isNullOrBlank()) {
+        if (currentSelection.address.isNullOrBlank()) {
             resolveSelection(target)
         } else {
-            updateAddressViews(currentSelection!!)
+            updateAddressViews(currentSelection)
         }
     }
 
@@ -97,7 +112,7 @@ class SelectLocationMapDialog : DialogFragment(R.layout.h_map) {
         } else {
             marker?.position = latLng
         }
-        if (moveCamera || currentSelection?.latLng == null) {
+        if (moveCamera || currentSelection.latLng == null) {
             map.moveCamera(CameraUpdateFactory.newLatLngZoom(latLng, 16f))
         }
     }
@@ -107,9 +122,9 @@ class SelectLocationMapDialog : DialogFragment(R.layout.h_map) {
         selectedAddressView.text = "Resolving address..."
         selectedMetaView.text = ""
 
-        viewLifecycleOwner.lifecycleScope.launch {
+        dialogScope.launch {
             val resolved = LocationAddressResolver.resolve(
-                context = requireContext(),
+                context = context,
                 latLongitude = latLongitude
             )
             currentSelection = LocationDetails(
@@ -119,8 +134,7 @@ class SelectLocationMapDialog : DialogFragment(R.layout.h_map) {
                 region = resolved.region,
                 country = resolved.country
             )
-            currentSelection?.let(::updateAddressViews)
-            confirmButton.isEnabled = true
+            updateAddressViews(currentSelection)
         }
     }
 
@@ -134,20 +148,11 @@ class SelectLocationMapDialog : DialogFragment(R.layout.h_map) {
         confirmButton.isEnabled = location.latLng != null
     }
 
-    private fun confirmSelection() {
-        val selection = currentSelection ?: return
-        parentFragmentManager.setFragmentResult(
-            Constants.SELECT_LOCATION_RESULT_KEY,
-            bundleOf(Constants.PLACE_PARAM to selection)
-        )
-        dismiss()
-    }
-
-    companion object {
-        fun newInstance(locationDetails: LocationDetails): SelectLocationMapDialog {
-            return SelectLocationMapDialog().apply {
-                arguments = bundleOf(Constants.LOCATION_DETAILS_PARAM to locationDetails)
-            }
-        }
+    private fun releaseMapLifecycleIfNeeded() {
+        if (!::mapView.isInitialized || mapLifecycleReleased) return
+        mapLifecycleReleased = true
+        mapView.onPause()
+        mapView.onStop()
+        mapView.onDestroy()
     }
 }

@@ -35,6 +35,7 @@ class SelectLocationFragment : Fragment() {
     private lateinit var progressBar: ProgressBar
     private lateinit var confirmButton: Button
 
+    private var mapDialog: SelectLocationMapDialog? = null
     private var selectedLocation: LocationDetails? = null
     private var flowName: String = ""
     private var poid: String? = null
@@ -68,15 +69,6 @@ class SelectLocationFragment : Fragment() {
         poid = arguments?.getString(Constants.POID_PARAM)
         eligibilityResponse = arguments?.parcelable(Constants.ELIGIBILITY_RESPONSE)
 
-        childFragmentManager.setFragmentResultListener(
-            Constants.SELECT_LOCATION_RESULT_KEY,
-            this
-        ) { _, result ->
-            result.parcelable<LocationDetails>(Constants.PLACE_PARAM)?.let { location ->
-                selectedLocation = location
-                renderSelection()
-            }
-        }
     }
 
     override fun onCreateView(
@@ -155,6 +147,12 @@ class SelectLocationFragment : Fragment() {
         }
     }
 
+    override fun onDestroyView() {
+        mapDialog?.dismiss()
+        mapDialog = null
+        super.onDestroyView()
+    }
+
     private fun showMapDialog() {
         val location = selectedLocation ?: LocationDetails(
             latLng = LatLongitude(
@@ -163,8 +161,15 @@ class SelectLocationFragment : Fragment() {
             )
         )
 
-        SelectLocationMapDialog.newInstance(location)
-            .show(childFragmentManager, Constants.SELECT_LOCATION_DIALOG_TAG)
+        mapDialog = SelectLocationMapDialog(
+            context = requireContext(),
+            initialLocation = location
+        ) { selectedDetails ->
+            selectedLocation = selectedDetails
+            renderSelection()
+        }.also { dialog ->
+            dialog.show()
+        }
     }
 
     private fun ensureLocationPermissionAndFetch() {
