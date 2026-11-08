@@ -1,0 +1,123 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.util.Properties
+
+plugins {
+    id("com.android.application")
+    id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.plugin.compose")
+    id("kotlin-parcelize")
+    id("com.huawei.agconnect")
+}
+
+val localConfig = Properties().apply {
+    val localPropertiesFile = rootProject.file("local.properties")
+    if (localPropertiesFile.exists()) {
+        localPropertiesFile.inputStream().use(::load)
+    }
+}
+
+android {
+    namespace = "com.demo.hmscomposeapp"
+    compileSdk = 36
+
+    defaultConfig {
+        applicationId = "com.demo.hmscomposeapp"
+        minSdk = 24
+        targetSdk = 36
+        versionCode = 1
+        versionName = "1.0"
+
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        vectorDrawables.useSupportLibrary = true
+    }
+
+    flavorDimensions += "store"
+    productFlavors {
+        create("google") {
+            dimension = "store"
+            manifestPlaceholders["googleMapsApiKey"] = providers
+                .gradleProperty("GOOGLE_MAPS_API_KEY")
+                .getOrElse(localConfig.getProperty("GOOGLE_MAPS_API_KEY", ""))
+        }
+        create("huawei") {
+            dimension = "store"
+        }
+    }
+
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("hms.keystore")
+            keyAlias = "alias_name"
+            keyPassword = "hms@12345678"
+            storePassword = "hms@12345678"
+            enableV1Signing = true
+            enableV2Signing = true
+        }
+    }
+
+    buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("debug")
+            isMinifyEnabled = false
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
+        }
+        release {
+            signingConfig = signingConfigs.getByName("debug")
+            isMinifyEnabled = false
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    buildFeatures {
+        compose = true
+    }
+
+    packaging {
+        resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_17)
+    }
+}
+
+dependencies {
+    val composeBom = platform("androidx.compose:compose-bom:2026.03.01")
+    implementation(composeBom)
+    androidTestImplementation(composeBom)
+
+    implementation("androidx.core:core-ktx:1.18.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.10.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.10.0")
+    implementation("androidx.activity:activity-compose:1.13.0")
+    implementation("androidx.savedstate:savedstate-compose:1.4.0")
+    implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.ui:ui-tooling-preview")
+    implementation("androidx.compose.material:material")
+
+    add("googleImplementation", "com.google.android.gms:play-services-location:21.4.0")
+    add("googleImplementation", "com.google.maps.android:maps-compose:8.2.2")
+
+    testImplementation("junit:junit:4.13.2")
+    androidTestImplementation("androidx.test.ext:junit:1.3.0")
+    androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    debugImplementation("androidx.compose.ui:ui-tooling")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
+
+    add("huaweiImplementation", "com.huawei.hms:maps:6.15.1.318")
+    add("huaweiImplementation", "com.huawei.hms:location:6.16.0.302")
+}
