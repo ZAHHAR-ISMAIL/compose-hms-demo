@@ -1,0 +1,6 @@
+[
+  {"mapFeature":"all","options":"geometry.fill","paint":{"color":"#242f3e"}},
+  {"mapFeature":"all","options":"labels.text.fill","paint":{"color":"#c8d0da"}},
+  {"mapFeature":"all","options":"labels.text.stroke","paint":{"color":"#242f3e"}},
+  {"mapFeature":"water","options":"geometry.fill","paint":{"color":"#17263c"}}
+]

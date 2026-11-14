@@ -1,0 +1,41 @@
+name: Map compatibility
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  builds-and-contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Install Android SDK
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - name: Verify shared sources and migration tooling
+        run: |
+          python3 scripts/map_inventory.py --check-shared
+          python3 -m unittest discover -s scripts -p 'test_*.py'
+      - name: Test contracts and build both providers
+        run: >-
+          ./gradlew :app:testGoogleDebugUnitTest :app:testHuaweiDebugUnitTest
+          :app:assembleGoogleDebug :app:assembleHuaweiDebug
+          :app:assembleGoogleRelease :app:assembleHuaweiRelease
+          :app:assembleGoogleDebugAndroidTest :app:assembleHuaweiDebugAndroidTest
+          :app:verifyMapIsolation --console=plain
+      - name: Inspect packaged DEX classes
+        run: |
+          python3 scripts/verify_map_apks.py --google app/build/outputs/apk/google/debug/app-google-debug.apk --huawei app/build/outputs/apk/huawei/debug/app-huawei-debug.apk
+          python3 scripts/verify_map_apks.py --google app/build/outputs/apk/google/release/app-google-release.apk --huawei app/build/outputs/apk/huawei/release/app-huawei-release.apk
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: map-builds-and-test-reports
+          path: |
+            app/build/outputs/apk/
+            app/build/reports/tests/

@@ -1,0 +1,12 @@
+The map subcomposition design in HuaweiMapApplier.kt and HuaweiMapBackend.kt
+is adapted from Google Maps Compose:
+https://github.com/googlemaps/android-maps-compose (version 8.2.2)
+
+Copyright 2021-2023 Google LLC
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+Provider-independent public APIs and HMS adaptation:
+Copyright 2026 hmsComposeApp contributors.
+
+This bridge uses Huawei's separately distributed Map Kit SDK. The Apache license
+does not apply to the Huawei or Google proprietary SDK binaries.

@@ -15,4 +15,16 @@
     <string name="location_permission_denied">Location permission denied. You can still tap the map.</string>
     <string name="location_timeout">Location timed out. Try again or tap the map.</string>
     <string name="location_unavailable">Unable to fetch location. Try again or tap the map.</string>
+    <string name="live_ride_demo">Live ride demo</string>
+    <string name="live_ride_title">Live ride</string>
+    <string name="map_ready">Map ready</string>
+    <string name="map_loading">Loading map…</string>
+    <string name="fit_route">Fit route</string>
+    <string name="pause_ride">Pause</string>
+    <string name="resume_ride">Resume</string>
+    <string name="day_style">Day style</string>
+    <string name="night_style">Night style</string>
+    <string name="normal_map">Normal map</string>
+    <string name="hybrid_map">Hybrid map</string>
+    <string name="back">Back</string>
 </resources>

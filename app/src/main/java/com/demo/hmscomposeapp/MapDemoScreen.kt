@@ -18,6 +18,10 @@ import androidx.compose.material.Text
 import androidx.compose.material.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -41,14 +45,17 @@ internal fun MapDemo(
         suppliedLocationProvider ?: createLocationProvider(context.applicationContext)
     }
     val state = rememberMapDemoState(locationProvider)
+    var showLiveRide by rememberSaveable { mutableStateOf(false) }
 
     Surface(Modifier.fillMaxSize().systemBarsPadding()) {
-        if (state.isPicking) LocationPicker(mapProvider, state) else Launcher(mapProvider, state)
+        if (showLiveRide) LiveRideDemoScreen(onBack = { showLiveRide = false })
+        else if (state.isPicking) LocationPicker(mapProvider, state)
+        else Launcher(mapProvider, state, onOpenLiveRide = { showLiveRide = true })
     }
 }
 
 @Composable
-private fun Launcher(mapProvider: MapProvider, state: MapDemoState) {
+private fun Launcher(mapProvider: MapProvider, state: MapDemoState, onOpenLiveRide: () -> Unit) {
     Column(Modifier.fillMaxSize()) {
         Text(
             text = stringResource(R.string.map_demo_title),
@@ -71,6 +78,7 @@ private fun Launcher(mapProvider: MapProvider, state: MapDemoState) {
             Button(onClick = state::openPicker) {
                 Text(stringResource(R.string.pick_location))
             }
+            TextButton(onClick = onOpenLiveRide) { Text(stringResource(R.string.live_ride_demo)) }
         }
     }
 }

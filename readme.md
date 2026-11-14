@@ -1,18 +1,34 @@
 # Map flavor demo
 
-A shared Jetpack Compose map demo with a separate location picker.
+A shared Jetpack Compose map demo with a location picker and a live ride map.
+Both flavors use the Google-shaped `com.demo.maps` compatibility API.
+
+**Start with [the architecture walkthrough](docs/map-architecture-explained.md)** for
+the complete folder structure, what `main/maps` owns, examples of both runtime paths,
+Google-side risks, and the alternative using native Google types behind flavor APIs.
 
 | Flavor   | Map SDK        | Current location      |
 | -------- | -------------- | --------------------- |
 | `google` | Google Maps    | Google fused location |
 | `huawei` | Huawei Map Kit | HMS fused location    |
 
-Shared UI, coordinates, geocoding and provider interfaces live in `app/src/main`.
-Each flavor implements `MapProvider`, `LocationProvider`, and the same factory functions
-in its own source set. Google uses the official Maps Compose library. Huawei keeps a
-small `AndroidView` host because Map Kit exposes `MapView`; the host owns overlays,
-forwards the full lifecycle, saves view state, and releases queued callbacks. No SDK
-map, coordinate, or location types cross into shared code.
+This is one Gradle module, `:app`. Shared screens and the compatibility API live in
+`app/src/main`; the Google backend lives in `app/src/google`, and the HMS backend
+in `app/src/huawei`. Flavor-specific dependencies include only the selected map
+and location SDKs. There are no extra map modules or library build files.
+
+The **Live ride demo** now executes the supplied **BusOnDemandRideMap** screen.
+Its queue processing, interpolation, camera effects, polygons, marker UI, and bearing
+calculation are preserved. Only 12 map imports and one fully qualified initializer
+reference change. Missing non-map imports and demo stand-ins for the unavailable
+production helpers/resources are kept outside that comparison.
+
+Compare [the reference with neutral demo names](docs/reference/bus-on-demand/original.kt.txt),
+[the migrated code](docs/reference/bus-on-demand/migrated.kt.txt), and
+[the exact diff](docs/reference/bus-on-demand/imports-only.diff).
+The runnable source is `app/src/main/java/com/demo/hmscomposeapp/busondemand/BusOnDemandRideMap.kt`.
+See [the compatibility contract and migration guide](docs/map-compatibility.md) for
+supported APIs, limits, an inventory tool, controlled import migration, and testing.
 
 The launcher shows one marker and a fixed, road-following 3.34 km route from Kingdom
 Centre to King Fahd Library in Riyadh (not a runtime directions service). Pick location
@@ -38,3 +54,12 @@ APKs:
 
 - `app/build/outputs/apk/google/debug/app-google-debug.apk`
 - `app/build/outputs/apk/huawei/debug/app-huawei-debug.apk`
+
+Contract tests and SDK isolation:
+
+```sh
+./gradlew :app:testGoogleDebugUnitTest :app:testHuaweiDebugUnitTest :app:verifyMapIsolation
+python3 -m unittest discover -s scripts -p 'test_*.py'
+python3 scripts/map_inventory.py --check-shared
+python3 scripts/verify_map_apks.py --google app/build/outputs/apk/google/debug/app-google-debug.apk --huawei app/build/outputs/apk/huawei/debug/app-huawei-debug.apk
+```

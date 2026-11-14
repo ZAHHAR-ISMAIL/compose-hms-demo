@@ -110,14 +110,40 @@ dependencies {
 
     add("googleImplementation", "com.google.android.gms:play-services-location:21.4.0")
     add("googleImplementation", "com.google.maps.android:maps-compose:8.2.2")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 
-    add("huaweiImplementation", "com.huawei.hms:maps:6.15.1.318")
     add("huaweiImplementation", "com.huawei.hms:location:6.16.0.302")
+    add("huaweiImplementation", "com.huawei.hms:maps:6.15.1.318")
+}
+
+tasks.register("verifyMapIsolation") {
+    group = "verification"
+    description = "Reject opposite-provider map and location dependencies in every app flavor."
+    doLast {
+        for (flavor in listOf("google", "huawei")) {
+            for (buildType in listOf("Debug", "Release")) {
+                val classpath = configurations.getByName("${flavor}${buildType}RuntimeClasspath")
+                val graph = classpath.incoming.resolutionResult
+                check(graph.allDependencies.none { it is org.gradle.api.artifacts.result.UnresolvedDependencyResult }) {
+                    "Cannot verify an unresolved ${flavor}${buildType} dependency graph"
+                }
+                val forbidden = graph.allComponents.mapNotNull { it.moduleVersion }.filter { id ->
+                    if (flavor == "huawei") {
+                        id.group == "com.google.maps.android" ||
+                            (id.group == "com.google.android.gms" && id.name in setOf("play-services-maps", "play-services-location"))
+                    } else id.group == "com.huawei.hms" && id.name in setOf("maps", "location")
+                }
+                check(forbidden.isEmpty()) { "${flavor}${buildType} includes forbidden SDKs: $forbidden" }
+                logger.lifecycle("PASS ${flavor}${buildType}: map and location dependencies are isolated")
+            }
+        }
+    }
 }
