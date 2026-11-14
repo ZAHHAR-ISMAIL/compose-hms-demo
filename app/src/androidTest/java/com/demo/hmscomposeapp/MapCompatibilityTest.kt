@@ -21,7 +21,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.dp
 import androidx.test.platform.app.InstrumentationRegistry
-import com.demo.hmscomposeapp.map.createMapBackend
+import com.demo.maps.MapsInitializer
 import com.demo.maps.CameraUpdateFactory
 import com.demo.maps.compose.CameraPositionState
 import com.demo.maps.compose.GoogleMap
@@ -29,7 +29,6 @@ import com.demo.maps.compose.MapProperties
 import com.demo.maps.compose.MarkerComposable
 import com.demo.maps.compose.MarkerState
 import com.demo.maps.compose.Polygon
-import com.demo.maps.compose.ProvideMapBackend
 import com.demo.maps.model.CameraPosition
 import com.demo.maps.model.LatLng
 import com.demo.maps.model.MapStyleOptions
@@ -37,6 +36,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import org.junit.Assert.*
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import java.util.concurrent.atomic.AtomicBoolean
@@ -49,6 +49,13 @@ class MapCompatibilityTest {
     private val origin = LatLng(24.713630, 46.675293)
     private val destination = LatLng(24.710543, 46.676544)
 
+    @Before fun initializeNativeSdk() {
+        // CameraUpdateFactory is the real Google factory on that flavor. It needs SDK setup even
+        // when testing a command issued before a MapView exists. HMS also initializes explicitly.
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.runOnMainSync { MapsInitializer.initialize(instrumentation.targetContext) }
+    }
+
     @Test fun cameraCommandsBeforeReadinessAndAnimationCompletion() {
         val camera = CameraPositionState(CameraPosition.fromLatLngZoom(origin, 14f))
         camera.move(CameraUpdateFactory.newLatLngZoom(origin, 15f))
@@ -58,9 +65,7 @@ class MapCompatibilityTest {
         val failure = AtomicReference<Throwable?>(null)
         compose.setContent {
             scope = rememberCoroutineScope()
-            ProvideMapBackend(createMapBackend()) {
-                GoogleMap(Modifier.fillMaxSize(), cameraPositionState = camera, onMapLoaded = { loaded.set(true) })
-            }
+            GoogleMap(Modifier.fillMaxSize(), cameraPositionState = camera, onMapLoaded = { loaded.set(true) })
         }
         compose.runOnIdle {
             scope.launch {
@@ -86,9 +91,7 @@ class MapCompatibilityTest {
         lateinit var animation: Job
         compose.setContent {
             scope = rememberCoroutineScope()
-            ProvideMapBackend(createMapBackend()) {
-                if (showing) GoogleMap(Modifier.fillMaxSize(), cameraPositionState = camera, onMapLoaded = { loaded.incrementAndGet() })
-            }
+            if (showing) GoogleMap(Modifier.fillMaxSize(), cameraPositionState = camera, onMapLoaded = { loaded.incrementAndGet() })
         }
         compose.waitUntil(30_000) { loaded.get() >= 1 }
         compose.runOnIdle { animation = scope.launch { camera.animate(CameraUpdateFactory.newLatLngZoom(destination, 18f), 10_000) } }
@@ -108,15 +111,13 @@ class MapCompatibilityTest {
         val clicked = AtomicReference<String?>(null)
         val loaded = AtomicBoolean(false)
         compose.setContent {
-            ProvideMapBackend(createMapBackend()) {
-                GoogleMap(Modifier.fillMaxSize().testTag("native-map"), cameraPositionState = camera, onMapLoaded = { loaded.set(true) }) {
-                    Polygon(points = listOf(LatLng(24.72, 46.67), LatLng(24.70, 46.67), LatLng(24.70, 46.69), LatLng(24.72, 46.69)),
-                        holes = listOf(listOf(LatLng(24.716, 46.674), LatLng(24.710, 46.674), LatLng(24.710, 46.680), LatLng(24.716, 46.680))),
-                        fillColor = Color.Black.copy(alpha = 0.2f), strokeWidth = 0f)
-                    if (showing) key("bus") {
-                        MarkerComposable(markerColor, state = marker, anchor = Offset(0.5f, 0.5f), onClick = { clicked.set(it.id); true }) {
-                            Box(Modifier.size(40.dp).background(markerColor))
-                        }
+            GoogleMap(Modifier.fillMaxSize().testTag("native-map"), cameraPositionState = camera, onMapLoaded = { loaded.set(true) }) {
+                Polygon(points = listOf(LatLng(24.72, 46.67), LatLng(24.70, 46.67), LatLng(24.70, 46.69), LatLng(24.72, 46.69)),
+                    holes = listOf(listOf(LatLng(24.716, 46.674), LatLng(24.710, 46.674), LatLng(24.710, 46.680), LatLng(24.716, 46.680))),
+                    fillColor = Color.Black.copy(alpha = 0.2f), strokeWidth = 0f)
+                if (showing) key("bus") {
+                    MarkerComposable(markerColor, state = marker, anchor = Offset(0.5f, 0.5f), onClick = { clicked.set(it.id); true }) {
+                        Box(Modifier.size(40.dp).background(markerColor))
                     }
                 }
             }
@@ -147,13 +148,11 @@ class MapCompatibilityTest {
         var dark by mutableStateOf(false)
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         compose.setContent {
-            ProvideMapBackend(createMapBackend()) {
-                Column(Modifier.fillMaxSize()) {
-                    GoogleMap(Modifier.weight(1f), cameraPositionState = first,
-                        properties = MapProperties(mapStyleOptions = MapStyleOptions.loadRawResourceStyle(context, if (dark) R.raw.dark_map_style else R.raw.map_style)),
-                        onMapLoaded = { loaded.incrementAndGet() })
-                    GoogleMap(Modifier.weight(1f), cameraPositionState = second, onMapLoaded = { loaded.incrementAndGet() })
-                }
+            Column(Modifier.fillMaxSize()) {
+                GoogleMap(Modifier.weight(1f), cameraPositionState = first,
+                    properties = MapProperties(mapStyleOptions = MapStyleOptions.loadRawResourceStyle(context, if (dark) R.raw.dark_map_style else R.raw.map_style)),
+                    onMapLoaded = { loaded.incrementAndGet() })
+                GoogleMap(Modifier.weight(1f), cameraPositionState = second, onMapLoaded = { loaded.incrementAndGet() })
             }
         }
         compose.waitUntil(30_000) { loaded.get() >= 2 }

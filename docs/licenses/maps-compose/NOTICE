@@ -1,4 +1,4 @@
-The map subcomposition design in HuaweiMapApplier.kt and HuaweiMapBackend.kt
+The map subcomposition design in HuaweiMapApplier.kt and HuaweiMapContent.kt
 is adapted from Google Maps Compose:
 https://github.com/googlemaps/android-maps-compose (version 8.2.2)
 

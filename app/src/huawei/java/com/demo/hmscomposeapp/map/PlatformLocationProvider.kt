@@ -60,3 +60,5 @@ private fun android.location.Location.isFresh(): Boolean {
 }
 
 private const val MAX_CACHED_LOCATION_AGE_MS = 30_000L
+
+fun createLocationProvider(context: Context): LocationProvider = PlatformLocationProvider(context)

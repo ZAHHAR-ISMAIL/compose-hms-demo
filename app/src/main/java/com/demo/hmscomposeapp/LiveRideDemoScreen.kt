@@ -14,13 +14,9 @@ import androidx.compose.ui.unit.dp
 import com.demo.hmscomposeapp.busondemand.BusOnDemandRideMap
 import com.demo.hmscomposeapp.busondemand.LiveLineTransport
 import com.demo.maps.CameraUpdateFactory
-import com.demo.maps.backend.MapBackend
-import com.demo.maps.backend.MapEvents
 import com.demo.maps.compose.CameraPositionState
-import com.demo.maps.compose.LocalMapBackend
-import com.demo.maps.compose.MapProperties
+import com.demo.maps.compose.ObserveMapForDemo
 import com.demo.maps.compose.MapType
-import com.demo.maps.compose.MapUiSettings
 import com.demo.maps.model.LatLng
 import com.demo.maps.model.LatLngBounds
 import java.util.Queue
@@ -36,7 +32,6 @@ internal fun LiveRideDemoScreen(onBack: () -> Unit) {
     var night by rememberSaveable { mutableStateOf(false) }
     var hybrid by rememberSaveable { mutableStateOf(false) }
     var replay by rememberSaveable { mutableIntStateOf(0) }
-    val backend = LocalMapBackend.current
     val baseConfiguration = LocalConfiguration.current
     val configuration = remember(baseConfiguration, night) {
         Configuration(baseConfiguration).apply {
@@ -53,7 +48,7 @@ internal fun LiveRideDemoScreen(onBack: () -> Unit) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = onBack) { Text(stringResource(R.string.back)) }
             Text("BusOnDemandRideMap", style = MaterialTheme.typography.subtitle1)
-            Text(" · ${backend.id}", style = MaterialTheme.typography.caption)
+            Text(" · ${stringResource(R.string.map_provider_name)}", style = MaterialTheme.typography.caption)
         }
         // The pasted screen remembers properties without mapType/theme keys. Recreate only the
         // demo instance for these controls, preserving the supplied implementation verbatim.
@@ -63,9 +58,6 @@ internal fun LiveRideDemoScreen(onBack: () -> Unit) {
             var transport by remember {
                 mutableStateOf<Pair<String, Queue<LiveLineTransport>>>(
                     "demo-bus" to ConcurrentLinkedQueue(listOf(route.last().transport(isAtStop = true))))
-            }
-            val observer = remember(backend) {
-                DemoMapObserver(backend, { camera = it }, { loaded = true })
             }
             LaunchedEffect(loaded) {
                 if (!loaded) return@LaunchedEffect
@@ -78,17 +70,19 @@ internal fun LiveRideDemoScreen(onBack: () -> Unit) {
                     })
             }
             Box(Modifier.fillMaxWidth().weight(1f)) {
-                CompositionLocalProvider(LocalMapBackend provides observer, LocalConfiguration provides configuration) {
-                    BusOnDemandRideMap(
-                        isLiveActive = running,
-                        fromCoord = route.first(),
-                        toCoord = route.last(),
-                        riyadhGeo = region,
-                        mapType = if (hybrid) MapType.HYBRID else MapType.NORMAL,
-                        bottomContentHeight = 72.dp,
-                        modifier = Modifier.fillMaxSize(),
-                        liveTransport = transport,
-                    )
+                CompositionLocalProvider(LocalConfiguration provides configuration) {
+                    ObserveMapForDemo(onCamera = { camera = it }, onLoaded = { loaded = true }) {
+                        BusOnDemandRideMap(
+                            isLiveActive = running,
+                            fromCoord = route.first(),
+                            toCoord = route.last(),
+                            riyadhGeo = region,
+                            mapType = if (hybrid) MapType.HYBRID else MapType.NORMAL,
+                            bottomContentHeight = 72.dp,
+                            modifier = Modifier.fillMaxSize(),
+                            liveTransport = transport,
+                        )
+                    }
                 }
                 Surface(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(12.dp), elevation = 4.dp) {
                     Row(Modifier.padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -110,26 +104,3 @@ internal fun LiveRideDemoScreen(onBack: () -> Unit) {
 }
 
 private fun LatLng.transport(isAtStop: Boolean) = LiveLineTransport(x = longitude, y = latitude, bearing = 0.0, isAtStop = isAtStop)
-
-/** Observes demo readiness/camera for the surrounding controls without editing the pasted map. */
-private class DemoMapObserver(
-    private val delegate: MapBackend,
-    private val onCamera: (CameraPositionState) -> Unit,
-    private val onLoaded: () -> Unit,
-) : MapBackend by delegate {
-    @Composable
-    override fun Map(
-        modifier: Modifier,
-        cameraPositionState: CameraPositionState,
-        properties: MapProperties,
-        uiSettings: MapUiSettings,
-        contentPadding: PaddingValues,
-        contentDescription: String?,
-        events: MapEvents,
-        content: @Composable () -> Unit,
-    ) {
-        SideEffect { onCamera(cameraPositionState) }
-        delegate.Map(modifier, cameraPositionState, properties, uiSettings, contentPadding, contentDescription,
-            events.copy(onMapLoaded = { onLoaded(); events.onMapLoaded() }), content)
-    }
-}

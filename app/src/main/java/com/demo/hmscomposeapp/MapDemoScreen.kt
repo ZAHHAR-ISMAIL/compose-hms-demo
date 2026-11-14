@@ -28,18 +28,18 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.demo.hmscomposeapp.map.LocationProvider
-import com.demo.hmscomposeapp.map.MapProvider
+import com.demo.hmscomposeapp.map.DemoMapRenderer
 import com.demo.hmscomposeapp.map.createLocationProvider
-import com.demo.hmscomposeapp.map.createMapProvider
+import com.demo.hmscomposeapp.map.createDemoMapRenderer
 
 @Composable
 internal fun MapDemo(
-    suppliedMapProvider: MapProvider? = null,
+    suppliedDemoMapRenderer: DemoMapRenderer? = null,
     suppliedLocationProvider: LocationProvider? = null,
 ) {
     val context = LocalContext.current
-    val mapProvider = remember(suppliedMapProvider) {
-        suppliedMapProvider ?: createMapProvider()
+    val mapRenderer = remember(suppliedDemoMapRenderer) {
+        suppliedDemoMapRenderer ?: createDemoMapRenderer()
     }
     val locationProvider = remember(context, suppliedLocationProvider) {
         suppliedLocationProvider ?: createLocationProvider(context.applicationContext)
@@ -49,20 +49,20 @@ internal fun MapDemo(
 
     Surface(Modifier.fillMaxSize().systemBarsPadding()) {
         if (showLiveRide) LiveRideDemoScreen(onBack = { showLiveRide = false })
-        else if (state.isPicking) LocationPicker(mapProvider, state)
-        else Launcher(mapProvider, state, onOpenLiveRide = { showLiveRide = true })
+        else if (state.isPicking) LocationPicker(mapRenderer, state)
+        else Launcher(mapRenderer, state, onOpenLiveRide = { showLiveRide = true })
     }
 }
 
 @Composable
-private fun Launcher(mapProvider: MapProvider, state: MapDemoState, onOpenLiveRide: () -> Unit) {
+private fun Launcher(mapRenderer: DemoMapRenderer, state: MapDemoState, onOpenLiveRide: () -> Unit) {
     Column(Modifier.fillMaxSize()) {
         Text(
             text = stringResource(R.string.map_demo_title),
             style = MaterialTheme.typography.h6,
             modifier = Modifier.padding(16.dp),
         )
-        mapProvider.Map(
+        mapRenderer.Map(
             marker = state.selected,
             route = DemoMapData.route,
             modifier = Modifier.fillMaxWidth().weight(1f),
@@ -84,7 +84,7 @@ private fun Launcher(mapProvider: MapProvider, state: MapDemoState, onOpenLiveRi
 }
 
 @Composable
-private fun LocationPicker(mapProvider: MapProvider, state: MapDemoState) {
+private fun LocationPicker(mapRenderer: DemoMapRenderer, state: MapDemoState) {
     val context = LocalContext.current
     BackHandler(onBack = state::cancelPicker)
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -99,7 +99,7 @@ private fun LocationPicker(mapProvider: MapProvider, state: MapDemoState) {
             style = MaterialTheme.typography.h6,
             modifier = Modifier.padding(16.dp),
         )
-        mapProvider.Map(
+        mapRenderer.Map(
             marker = state.draft,
             route = emptyList(),
             modifier = Modifier.fillMaxWidth().weight(1f),

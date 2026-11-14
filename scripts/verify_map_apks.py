@@ -31,10 +31,46 @@ def verify(apk, provider):
                    for name in dex_classes(archive.read(file))}
     forbidden = ("Lcom/google/android/gms/maps/", "Lcom/google/android/gms/location/", "Lcom/google/maps/android/") if provider == "huawei" else ("Lcom/huawei/hms/maps/", "Lcom/huawei/hms/location/")
     offending = sorted(name for name in classes if name.startswith(forbidden))
-    required = f"Lcom/demo/maps/{provider}/{provider.title()}MapBackend;"
+    required = "Lcom/demo/maps/compose/MapsComposeKt;"
     if offending or required not in classes:
-        raise SystemExit(f"{apk}: isolation failed; backend present={required in classes}; forbidden classes={offending[:10]}")
-    print(f"PASS {apk}: {provider} backend present; no opposite-provider map/location classes ({len(classes)} classes checked)")
+        raise SystemExit(f"{apk}: isolation failed; Compose API present={required in classes}; forbidden classes={offending[:10]}")
+    # Aliases must not accidentally become replacement classes on the Google path. Huawei retains
+    # these compatible implementations, while Google must package the official implementations.
+    compatibility_types = {
+        "Lcom/demo/maps/CameraUpdate;",
+        "Lcom/demo/maps/CameraUpdateFactory;",
+        "Lcom/demo/maps/compose/internal/CameraController;",
+        "Lcom/demo/maps/compose/CameraPositionState;",
+        "Lcom/demo/maps/compose/MarkerState;",
+        "Lcom/demo/maps/compose/MapProperties;",
+        "Lcom/demo/maps/compose/MapUiSettings;",
+        "Lcom/demo/maps/compose/MapType;",
+        "Lcom/demo/maps/compose/CameraMoveStartedReason;",
+        "Lcom/demo/maps/model/LatLng;",
+        "Lcom/demo/maps/model/LatLngBounds;",
+        "Lcom/demo/maps/model/CameraPosition;",
+        "Lcom/demo/maps/model/MapStyleOptions;",
+        "Lcom/demo/maps/model/BitmapDescriptor;",
+        "Lcom/demo/maps/model/BitmapDescriptorFactory;",
+        "Lcom/demo/maps/model/Marker;",
+        "Lcom/demo/maps/model/Polygon;",
+        "Lcom/demo/maps/model/Polyline;",
+        "Lcom/demo/maps/model/Circle;",
+    }
+    if provider == "google":
+        unexpected = sorted(compatibility_types & classes)
+        if unexpected:
+            raise SystemExit(f"{apk}: Google aliases were replaced by custom runtime classes: {unexpected}")
+        native_types = {
+            "Lcom/google/maps/android/compose/CameraPositionState;",
+            "Lcom/google/maps/android/compose/MarkerState;",
+            "Lcom/google/android/gms/maps/model/LatLng;",
+        }
+        if not native_types <= classes:
+            raise SystemExit(f"{apk}: missing native Google classes: {sorted(native_types - classes)}")
+    elif not compatibility_types <= classes:
+        raise SystemExit(f"{apk}: missing Huawei compatibility classes: {sorted(compatibility_types - classes)}")
+    print(f"PASS {apk}: {provider} types/Compose API present; no opposite-provider map/location classes ({len(classes)} classes checked)")
 
 
 def main():

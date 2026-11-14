@@ -10,14 +10,14 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import com.demo.hmscomposeapp.locationpicker.LatLongitude
 import com.demo.hmscomposeapp.map.LocationProvider
-import com.demo.hmscomposeapp.map.MapProvider
+import com.demo.hmscomposeapp.map.DemoMapRenderer
 import org.junit.Rule
 import org.junit.Test
 
 class MapDemoTest {
     @get:Rule val compose = createComposeRule()
     private val tapped = LatLongitude(24.72, 46.68)
-    private val map = object : MapProvider {
+    private val map = object : DemoMapRenderer {
         @Composable
         override fun Map(marker: LatLongitude, route: List<LatLongitude>, modifier: Modifier,
                          onMapTap: (LatLongitude) -> Unit) {

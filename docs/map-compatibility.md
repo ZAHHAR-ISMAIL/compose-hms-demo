@@ -2,10 +2,11 @@
 
 Read [the architecture walkthrough](map-architecture-explained.md) first for a plain
 explanation of the shared files, type/state ownership, execution paths, Google-side
-impact, and alternative designs. This document is the API/migration reference.
+impact, and the native alias design. This document is the API/migration reference.
 
 The shared Kotlin/Compose API is `com.demo.maps`. Both flavors compile the same
-screen code. Google delegates to the official Maps Compose 8.2.2 library; Huawei
+screen code. Google aliases its native SDK/Compose models and state, and forwards
+objects directly to the official Maps Compose 8.2.2 library; Huawei
 uses Map Kit 6.15.1.318 with an independent map subcomposition and retained overlays.
 This implements the API used by the supplied bus-map example, not the entire
 Google Maps SDK. The original application's other 120+ files are not in this repo.
@@ -14,9 +15,9 @@ Google Maps SDK. The original application's other 120+ files are not in this rep
 
 | Source set | Responsibility | Native dependencies |
 | --- | --- | --- |
-| `app/src/main` | Screens, models, camera/marker state, Compose facade, backend contract | No native SDK types in shared code |
-| `app/src/google` | Google conversions and official Compose forwarding | Google Maps Compose |
-| `app/src/huawei` | HMS lifecycle, camera callbacks, Compose nodes, marker bitmaps | HMS Map Kit |
+| `app/src/main` | Shared screens and demo helpers; no map compatibility files | Map imports resolve directly to the active flavor |
+| `app/src/google` | Direct Compose entry points, native Google aliases and initialization | Google Maps Compose |
+| `app/src/huawei` | Same public entry points, compatible models/state, and native rendering under compose/internal | HMS Map Kit |
 
 The app keeps the existing `store` flavor dimension. `googleImplementation` and
 `huaweiImplementation` include the respective native SDK directly. Settings includes
@@ -53,28 +54,37 @@ separation and fail if additional screen body changes are introduced.
 
 ## App wiring
 
-Flavor-specific `createMapBackend()` selects the backend once. The activity wraps
-the shared screen in:
+The build selects the declarations; there is no implementation registration or
+provider wrapper. Initialize the selected SDK before child screens construct
+native camera updates or bitmap descriptors:
 
 ```kotlin
-ProvideMapBackend(createMapBackend()) {
-    MapDemo()
+MapsInitializer.initialize(applicationContext)
+setContent {
+    HmsComposeAppTheme {
+        MapDemo()
+    }
 }
 ```
 
-The optional `MapsInitializer.initialize(context)` compatibility entry point works
-inside that root. Backend initialization uses the application context. Provider
-selection is a build decision; microG/GMS detection does not affect the map path.
-Location continues through the existing, separate flavor-specific LocationProvider.
+The two flavors expose `com.demo.maps.MapsInitializer` and
+`com.demo.maps.compose.GoogleMap` directly. Google forwards to official Compose;
+Huawei calls its HMS implementation. The initializer also works standalone, so the
+sample's qualified call needs no surrounding registration. Location continues
+through the separate flavor-specific LocationProvider.
+
+The optional internal `ObserveMapForDemo` helper observes camera/loading for the
+surrounding comparison controls. Existing screens do not need it. It is unrelated
+to SDK selection, which is entirely a build decision.
 
 ## Supported source contract
 
 | Google API family | Shared replacement | Implemented behavior |
 | --- | --- | --- |
-| `maps.model.LatLng`, `LatLngBounds`, `CameraPosition` | `com.demo.maps.model` | Coordinate normalization, bounds including antimeridian, camera model |
+| `maps.model.LatLng`, `LatLngBounds`, `CameraPosition` | `com.demo.maps.model` | Native Google models; existing HMS normalization/bounds/camera implementations |
 | `maps.CameraUpdateFactory`, `CameraUpdate` | `com.demo.maps` | Target, target/zoom, bounds, full position, scroll, relative/absolute zoom |
-| `CameraPositionState`, `rememberCameraPositionState` | `com.demo.maps.compose` | Position, moving/reason state, move, suspending/cancellable animate, scalar saver |
-| `MarkerState`, remembered marker state helpers | `com.demo.maps.compose` | Position updates, dragging, info-window control, scalar saver |
+| `CameraPositionState`, `rememberCameraPositionState` | `com.demo.maps.compose` | Native Google state/saver; existing HMS move/animate, cancellation and scalar saver |
+| `MarkerState`, remembered marker state helpers | `com.demo.maps.compose` | Native Google state/saver; existing HMS position/drag/info-window control and scalar saver |
 | `GoogleMap`, `MapProperties`, `MapUiSettings`, `MapType` | `com.demo.maps.compose` | Map properties, UI controls, gestures, padding, loaded/tap/location callbacks |
 | `Marker`, `MarkerComposable` | `com.demo.maps.compose` | Identity, bitmap/resource icons, Compose icons, rotation, anchor, z-index, drag/click/info-window callbacks |
 | `Polygon` | `com.demo.maps.compose` | Points, holes, color, stroke width, geodesic, click, tag, visibility, z-index |
@@ -101,31 +111,39 @@ GoogleMap(
 ```
 
 `BusOnDemandRideMap` is the runnable complex example. Its map imports all resolve to
-the shared API. On Huawei, that API calls HMS MapView and HMS overlays; the screen
+the matching flavor API. On Huawei, that API calls HMS MapView and HMS overlays; the screen
 does not need Huawei-specific branches or a second implementation.
 
 ## State, lifecycle and animation rules
 
 - Call map/state commands on the main thread. Each camera state belongs to one map;
-  each marker state belongs to one marker. Both can be reused after disposal.
-- Camera commands can be constructed before SDK initialization. The last move
-  before map layout wins. Animations suspend until readiness; movement, replacement
-  animation, caller cancellation, and disposal cancel the previous animation.
-- HMS initial movement waits for a laid-out native map; HMS animation additionally
-  waits for the first native loaded frame, preventing an SDK startup cancellation.
-  Google readiness uses the underlying map and layout, independently of tile loading.
+  each marker state belongs to one marker. Shared behavior tests cover disposal/reuse.
+- Google models, commands, properties, callback handles and state are native aliases.
+  Its functions forward the same objects to official Maps Compose. There is no custom
+  Google controller, mirrored state, coordinate conversion or extra readiness gate.
+- Initialize Google SDK before constructing native camera/icon commands. Native state
+  handles commands before map availability according to the pinned library's rules.
+  An SDK-initialized command before a MapView exists is distinct from a command before
+  SDK setup. Native lifecycle, animations, interruption and saving stay with Google.
+- Huawei retains its custom deferred commands, constructed before SDK readiness. Its
+  last pre-layout move wins; animation waits for layout and the first native loaded
+  frame. Replacement animation, movement, caller cancellation and disposal cancel work.
 - HMS forwards create/start/resume/pause/stop/destroy/low-memory and native saved
   state. Native map destruction disposes overlays, listeners, bitmap views and
   pending camera work first. Multiple map instances have separate save-state keys.
 - Marker position and rotation update the existing native object. Static Compose
   icons are retained; visual keys/content invalidation refresh their bitmap. The
-  native instrumentation test checks actual pixels and stable native marker IDs.
+  shared instrumentation test checks actual pixels and stable native marker IDs.
 - Compose marker content is a bitmap, not an interactive UI subtree. Put interaction
   in marker callbacks. For continuous cross-provider ripples, animate a map circle
   rather than regenerating a complex icon for every movement frame.
-- Camera/marker savers store primitive coordinate values, not SDK Parcelables.
-  Shared LatLng is not an SDK Parcelable. Existing persisted SDK objects, navigation
-  arguments and serialization adapters need explicit scalar migration.
+- Google keeps original SDK Parcelable models and official camera/marker savers.
+  Huawei keeps primitive-coordinate savers; its custom LatLng is not Parcelable.
+  Persisted SDK objects, navigation arguments and serialization adapters require an
+  inventory. This bridge does not exchange saved-state formats between providers.
+- Native Google aliases expose more members than the common supported subset, such
+  as additional camera-state APIs and enum values. Their presence on Google does
+  not imply Huawei support; always compile the shared code against both flavors.
 
 ## Migrate the larger app
 
@@ -139,9 +157,13 @@ does not need Huawei-specific branches or a second implementation.
    Java files, and native escape hatches. Confirm the app's API versions against
    this bridge's pinned versions rather than upgrading SDKs during migration.
 
-2. Add the shared bridge to main sources and native implementations to the existing
-   flavor source sets, then configure flavor-only SDK dependencies, the root provider,
-   credentials, and flavor-specific style resources. Additional modules are optional.
+2. Put matching map API declarations in the existing google/huawei source sets.
+   Google uses aliases and direct function forwarding; Huawei keeps compatible
+   models/state and internal native rendering. Keep screens in main and do not
+   duplicate the map declarations there. Configure flavor-only SDK dependencies,
+   early SDK initialization, credentials and flavor-specific style resources.
+   No new module is required. Inspect separately compiled feature dependencies: this
+   is a Kotlin source API, not a provider-independent binary contract.
 
 3. Migrate shared map/marker helpers first. In this repo the replacement namespace
    is `com.demo.maps`; it can be renamed consistently to the production namespace.
@@ -167,11 +189,12 @@ does not need Huawei-specific branches or a second implementation.
 
 ### Explicit limits
 
-The public API deliberately has no SDK-shaped `GoogleMap` object, raw `MapView`,
+The cross-flavor contract does not supply an SDK-shaped `GoogleMap` object, raw `MapView`,
 fragments, `MapEffect`, projection, `GoogleMapOptions`, Street View, advanced markers,
 clustering, tile/ground overlays, line cap/pattern types, or composable info windows.
-These usages require additional adapters and fail compilation until implemented;
-they are not silently ignored. Java, XML, reflection and precompiled libraries
+These usages need additional Huawei support and suitable public entry points;
+shared code fails compilation until supported. Native Google alias members alone
+do not add Huawei implementations. Unsupported features are not silently ignored. Java, XML, reflection and precompiled libraries
 that expose Google classes cannot be made compatible by Kotlin import replacement.
 
 The supplied `LiveBusTransportMarker` and `defaultMapSetting()` implementations
@@ -210,15 +233,21 @@ interruption on disposal and state reuse, marker image refresh and native identi
 conditional overlay removal, multiple maps, and style switching. Existing tests
 cover picker confirmation/cancellation, timeout and scalar state restoration.
 
+Huawei-only unit tests cover the retained custom geometry/state implementations.
+Google-only native tests verify type identity/interoperability, callback handles,
+Parcelable behavior and restoration through forwarded remember factories. Shared
+UI/native tests still exercise both renderers.
+
 The CI workflow builds debug/release for both flavors, runs unit contracts and
 migration tests, checks dependency isolation, and parses DEX class definitions to
-reject opposite-provider map/location classes. Native device tests require real
+reject opposite-provider map/location classes. It also rejects custom map model/state
+classes in the Google APK and requires the Huawei implementations in its APK. Native device tests require real
 device/emulator execution and are separate from that build workflow. This demo's
 existing release configuration has shrinking disabled; R8 validation belongs to
 the production application's shrinking configuration.
 
 A Huawei device containing microG is not a clean GMS-free test environment. Verify
-the selected backend and APK isolation, then run against a separate GMS-unavailable
+the selected renderer and APK isolation, then run against a separate GMS-unavailable
 test environment. Do not use the device manufacturer alone as evidence.
 
 ## Sources and notices

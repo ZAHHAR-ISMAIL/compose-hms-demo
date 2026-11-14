@@ -46,3 +46,5 @@ internal class PlatformLocationProvider(context: Context) : LocationProvider {
 
 private const val LOCATION_TIMEOUT_MS = 15_000L
 private const val MAX_CACHED_LOCATION_AGE_MS = 30_000L
+
+fun createLocationProvider(context: Context): LocationProvider = PlatformLocationProvider(context)

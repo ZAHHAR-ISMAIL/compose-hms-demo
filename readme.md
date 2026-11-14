@@ -1,20 +1,24 @@
 # Map flavor demo
 
 A shared Jetpack Compose map demo with a location picker and a live ride map.
-Both flavors use the Google-shaped `com.demo.maps` compatibility API.
+Both flavors use the Google-shaped `com.demo.maps` compatibility API. Google resolves
+its models/state to the original SDK types through aliases and forwards to official
+Maps Compose; Huawei retains its HMS Compose integration.
 
 **Start with [the architecture walkthrough](docs/map-architecture-explained.md)** for
-the complete folder structure, what `main/maps` owns, examples of both runtime paths,
-Google-side risks, and the alternative using native Google types behind flavor APIs.
+the folder structure, direct flavor entry points, native Google aliases/forwarding,
+Huawei-only state, and the tradeoffs at module/persistence boundaries.
 
 | Flavor   | Map SDK        | Current location      |
 | -------- | -------------- | --------------------- |
 | `google` | Google Maps    | Google fused location |
 | `huawei` | Huawei Map Kit | HMS fused location    |
 
-This is one Gradle module, `:app`. Shared screens and the compatibility API live in
-`app/src/main`; the Google backend lives in `app/src/google`, and the HMS backend
-in `app/src/huawei`. Flavor-specific dependencies include only the selected map
+This is one Gradle module, `:app`. Shared screens live in `app/src/main`; all map
+compatibility declarations live in `app/src/google` and `app/src/huawei`. Google
+forwards directly to the official library. HMS native rendering details live in
+its `compose/internal` folder. There is no shared `main/maps` folder or runtime
+map implementation registry. Flavor-specific dependencies include only the selected map
 and location SDKs. There are no extra map modules or library build files.
 
 The **Live ride demo** now executes the supplied **BusOnDemandRideMap** screen.
