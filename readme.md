@@ -1,6 +1,6 @@
 # Map flavor demo
 
-A shared Jetpack Compose map demo with a location picker and a live ride map.
+A shared Jetpack Compose map demo with a location picker, live ride map and clustering.
 Both flavors use the Google-shaped `com.demo.maps` compatibility API. Google resolves
 its models/state to the original SDK types through aliases and forwards to official
 Maps Compose; Huawei retains its HMS Compose integration.
@@ -8,6 +8,9 @@ Maps Compose; Huawei retains its HMS Compose integration.
 **Start with [the architecture walkthrough](docs/map-architecture-explained.md)** for
 the folder structure, direct flavor entry points, native Google aliases/forwarding,
 Huawei-only state, and the tradeoffs at module/persistence boundaries.
+
+Read [the production-helper implementation guide](docs/details.md) for clustering,
+the real bus/stop helpers, the HMS mask repair, and remaining production gates.
 
 | Flavor   | Map SDK        | Current location      |
 | -------- | -------------- | --------------------- |
@@ -20,6 +23,12 @@ forwards directly to the official library. HMS native rendering details live in
 its `compose/internal` folder. There is no shared `main/maps` folder or runtime
 map implementation registry. Flavor-specific dependencies include only the selected map
 and location SDKs. There are no extra map modules or library build files.
+
+The **Clustering demo** uses the supplied wrapper contract with synthetic stations
+and an ordinary live vehicle on the same native map. Its artwork and geography are
+labelled demo substitutions. Google pins Maps Compose 6.5.0 / Maps 19.0.0 / Utils
+3.8.2 / Location 21.3.0; HMS versions remain unchanged. HMS hybrid/satellite modes
+are explicitly unsupported; the demo disables that choice instead of showing blank tiles.
 
 The **Live ride demo** now executes the supplied **BusOnDemandRideMap** screen.
 Its queue processing, interpolation, camera effects, polygons, marker UI, and bearing

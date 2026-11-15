@@ -1,175 +1,204 @@
-# Map compatibility validation
+# Map validation — production helpers extension
 
-## Direct flavor cleanup — November 14, 2026
+Validated November 14, 2026 on `flavor-aliases`, based on `0e8e768`.
+The implementation remains uncommitted. This record supersedes the earlier
+structural-cleanup results; it describes the current helper/clustering extension.
 
-The current working tree uses direct flavor entry points. Shared screens remain
-in main; `main/java/com/demo/maps` has been removed completely. Each flavor now
-owns `MapsInitializer` and `compose/MapsCompose.kt`. Google forwards directly to
-official Compose. HMS view, lifecycle, overlay, camera and bitmap internals live
-under its own `compose/internal` package.
-
-The application initializes its selected SDK directly before composing screens.
-There is no runtime map implementation registration or root provider wrapper.
-The launcher's small test component is named `DemoMapRenderer`; the location
-interface has its own `LocationProvider.kt`. The optional comparison observer only
-observes camera/loading and does not select an implementation.
-
-Both flavors' six public map/marker/shape signatures and defaults match the earlier
-shared entry points (Google's Compose target annotations are preserved separately).
-The supplied screen and reference/diff files remain byte-identical to `369c8be`.
-No further screen import changes are required. Changes remain uncommitted.
-
-The four APK builds, both test APK builds, unit suites (Google 1, Huawei 20), all
-six Python tests, dependency isolation and debug/release DEX isolation pass. The
-updated Google emulator suite passes all 13 tests, and the Huawei phone suite
-passes all 10 tests. The first phone attempt was obstructed by its lock screen;
-the full suite passed after unlocking and temporarily keeping it awake over USB.
-
-Current run logs: `/tmp/maps-direct-flavors-build.log`,
-`/tmp/maps-direct-flavors-google-tests.log` and
-`/tmp/maps-direct-flavors-huawei-tests.log`. The older results below describe prior
-revisions and must not be read as evidence that the removed routing is still present.
-
-## Earlier native Google alias revision — November 14, 2026
-
-Implemented on `codex/maps-native-aliases`, based on `369c8be` from
-`kotlin-DSL-flavor`. This is still one `:app` module with the existing store flavors
-and pinned SDK versions. Google uses native aliases and direct official Compose
-forwarding. The previous custom models/state/controllers now compile only on Huawei.
+## Results
 
 | Check | Result |
 | --- | --- |
-| Google app unit test | 1 passed |
-| Huawei custom geometry/state contracts plus app unit test | 20 passed |
-| Python migration and exact-screen comparison tests | 6 passed |
+| Google unit suite | **5 passed**, no failures/skips |
+| Huawei unit suite | **26 passed**, no failures/skips |
+| Shared Python migration/exact-screen comparison checks | **9 passed** |
 | Google debug and release APK builds | Passed |
 | Huawei debug and release APK builds | Passed |
-| Both instrumentation APK builds | Passed |
-| Runtime dependency isolation, all four variants | Passed |
+| Both debug test APK builds | Passed |
+| Exact dependency versions and provider isolation, all four variants | Passed |
 | Packaged DEX isolation, debug/release for both providers | Passed |
-| Google native/UI tests, Pixel_4_API_35 emulator, Android 15 / API 35 | 13 passed, 0 skipped |
-| Huawei native/UI tests, connected HOP-LX9, Android 16 / API 36 | 10 passed, 0 skipped |
+| Google native/UI suite, Pixel_4_API_35 emulator, API 35 | **20 passed**, no skipped tests |
+| Huawei native/UI suite, HOP-LX9 phone, API 36 | **17 passed**, no skipped tests |
+| Supplied screen and three reference files vs `0e8e768` | Byte-identical |
+| Forbidden legacy identifiers in project source/docs | Absent |
 
-The Google test suite includes three new integration scenarios: native model,
-factory and saver identity with a Parcelable round trip; a forwarded map controlled
-through the original native state with native marker callback handles; and native
-camera/marker restoration through the forwarded remember factories. Shared renderer
-tests still cover camera commands before map creation, animation completion,
-disposal/reuse, actual custom marker pixels and retained native IDs, conditional
-removal, polygon holes, multiple maps and style switching. Both complete UI suites
-include recreation and navigation of the actual preserved BusOnDemandRideMap.
+The Google baseline resolves Maps Compose 6.5.0, Maps SDK 19.0.0, Maps Utils 3.8.2
+and Location 21.3.0. Huawei retains Maps 6.15.1.318 and Location 6.16.0.302. Its mask
+fallback alone adds pinned earcut4j 2.2.2. Maps Utils KTX is absent. DEX checks also
+reject custom geometry/state/cluster interfaces on Google, require those HMS
+implementations on Huawei, and reject the triangulator/ported algorithm in Google.
 
-Shared tests explicitly initialize the SDK before constructing camera commands.
-Google factories are now native; the pre-map test is not a pre-SDK-initialization test.
+## What the checks establish
 
-Huawei's 19 custom implementation tests moved from shared tests to `testHuawei`;
-they were not discarded. Google is validated against its official state/model
-behavior rather than being required to satisfy custom HMS internals. DEX checks
-also reject custom map model/state/controller classes in the Google APK and require
-the Huawei-compatible implementations in its APK.
+**Grouping:** 60 checked-in membership fingerprints were recorded by the pinned
+native Google 3.8.2 algorithm. The same deterministic 1,000-item fixtures run in
+both unit suites across viewport resize, fixed-zoom panning, item removal/addition
+and integer/fractional zoom boundaries. Additional cases cover empty/one/two/three
+items, the size >= 2 renderer rule, distance just below/at/above the 50-dp search
+half-span and date-line viewport wrapping. Google aliases are used directly with
+the native Java algorithm; Huawei uses the adapted algorithm. Both match the
+native membership baseline.
 
-The runnable supplied screen and all three reference/diff files are byte-identical
-to the base commit. The exact comparison still changes only 12 map imports and one
-qualified initializer reference. A code-token comparison confirms the four moved
-model/state/command files and all five HMS integration files retain their original
-implementation; accompanying comments were updated for their new flavor ownership.
+**Native clustering/ownership:** shared native tests click groups, individual
+stations and ordinary vehicle markers. They verify callback order, consumed and
+unconsumed events, native marker identity after movement, showing/hiding a vehicle
+info window, item removal, conditional cluster-layer removal and disposal while a
+5,000-item request is pending. The vehicle and map survive layer removal. The
+wrapper exposes no new info-window callback API; these checks do not claim every
+possible custom info-window implementation has been migrated.
 
-A manual visual pass also opened the preserved live-ride screen in both providers,
-observed the custom bus marker moving and changing bearing, and switched day/night
-styles. Screenshots show the map-ready panel above the bottom controls; a wider
-Google zoom shows the dark world mask surrounding its region hole. Local captures
-are generated under `app/build/outputs/map-validation/native-aliases-*.png`. These
-are visual smoke checks, not a pixel-parity or performance benchmark.
+**Real helper behavior:** native tests retain the actual bus and stop helpers'
+marker IDs after coordinate changes. Bus tests step all 50 ripple frames, refresh
+bearing/tint/icon/mode, check deterministic bitmap geometry and verify zero
+repeated bitmap generation for unchanged non-ripple movement. Visibility removal
+stops its effect. The stop preserves its station callback and unconsumed return.
+Drawable dimension validation is exercised. Neutral artwork substitutes for the
+unavailable production resources.
 
-Build and test logs for this run are available locally in
-`/tmp/maps-native-aliases-build.log`, `/tmp/maps-native-aliases-google-tests.log` and
-`/tmp/maps-native-aliases-huawei-tests.log`. Generated JUnit XML and reports live under
-`app/build/test-results`, `app/build/outputs/androidTest-results` and
-`app/build/reports`. The full architecture and source layout are explained in
-[the updated guide](map-architecture-explained.md).
+**Boundaries:** repeated provider construction returns the same cached parsed
+object. All synthetic region vertices are contained by the builder-produced
+bounds. Malformed structure, wrong geometry, missing/empty region and out-of-range
+coordinates fail explicitly. These are synchronous-load/cache tests using a
+synthetic asset, not a measurement or validation of the unavailable real GeoJSON.
 
-**Observed visual limitation:** at a wider zoom the Huawei screen draws the region
-boundary, but its outside world-mask fill does not visibly darken the basemap as
-it does on Google. See the local `native-aliases-huawei-mask.png` and
-`native-aliases-google-mask.png` captures. Huawei's overlay implementation and
-screen inputs are unchanged from the base commit; large-world polygon rendering
-needs separate investigation. The passing polygon/overlay scenarios do not prove
-pixel-equivalent masking. This refactor preserves HMS behavior rather than fixing
-that existing implementation's rendering differences.
+**Mask:** the original native HMS world mask failed the exterior-fill pixel test.
+Normalizing rings, reversing hole winding and supplying complete holes/style at
+native creation did not fix it. Separate triangulated native faces fixed fill but
+the stricter test exposed translucent antialias seams. Shared mesh edges are now
+merged within each <=90-degree longitude band before native rendering.
 
-These results do not establish a GMS-free runtime environment: the connected phone
-contains microG. See the limitations below. Production shrinking remains disabled
-in this demo, and the original 120-file application has not been audited.
+The final shared native pixel test passes on both providers: rectangular clear
+interior, concave hole/notch, 50% exterior alpha, no stacked-alpha seams along its
+exterior scanline, only the two original outline crossings, click identity across
+pieces/geometry changes, zoom 12 -> 13, z-order against another native polygon,
+and grouped disposal. Pure geometry tests check fill area, band widths, winding
+and closure. These checks use synthetic Riyadh-area fixtures; they do not establish
+all possible world geometries, global views or real-boundary capacity.
 
-## Previous common-model adapter revision — November 12, 2026
+The final readiness checks also apply initial HMS properties/padding before a
+queued camera command attaches, and avoid reapplying identical padding. Callback
+assertions wait for the completed UI dispatch; map-loaded is not treated as
+camera-idle when a state is reattached.
 
-The bridge now lives entirely in `:app` source sets (`main`, `google`, `huawei`).
-Demo names and local drawable references are neutralized consistently in both
-comparison copies and the runnable file; external resource aliases were removed.
-The runnable demo invokes the exact supplied `BusOnDemandRideMap` body. The original,
-migrated copy, and the 13-line migration diff are in `docs/reference/bus-on-demand`.
-Two comparison tests enforce the 12 import changes and the single initializer
-reference change, and verify that this is the source actually compiled into the app.
+**Regression coverage:** the existing camera pre-map commands/completion,
+interruption/disposal/state reuse, marker pixels, multiple maps/styles, picker
+behavior and live-ride navigation/recreation tests remain. Google retains native
+Parcelable/state/saver interoperability checks. The comparison screen's startup,
+route framing, bottom panel/padding and theme controls continue through the real
+preserved screen. The body/queue logic and its reference comparison are unchanged.
 
-Both flavor unit suites pass: **20 tests per flavor** (the 19 relocated bridge
-contracts plus the existing app test). All **6 Python migration/comparison tests**
-pass. Both debug/release builds, both app lint variants, and dependency/APK isolation
-pass. The unchanged **10-test Google emulator suite passes**, including navigation,
-style changes and activity recreation of the actual preserved BusOnDemandRideMap.
-The Huawei instrumentation APK also compiles in the new single-module layout.
+The manual live-screen pass also observed the real bus bitmap/tracker, live
+movement and bottom-panel placement on both devices. Google hybrid tiles rendered;
+Huawei hybrid remained blank. Huawei's
+[Android SDK reference](https://developer.huawei.com/consumer/en/doc/HMSCore-References/huaweimap-0000001050151757/)
+identifies hybrid and satellite modes as unsupported. They are now checked through
+`MapType.isSupported()` and explicitly rejected by HMS MapProperties, with the demo
+choice disabled. These modes are not claimed as HMS parity coverage.
 
-No physical Huawei device was connected for this revision. The earlier Huawei
-results below validate the same native bridge before its source relocation; they
-must not be interpreted as a device test of the newly preserved pasted screen.
+## Synthetic load profile
 
-## Earlier bridge validation — November 11, 2026
+Each provider runs two five-second measured windows after paced warmup, with
+200 then 1,000 **input stations clustered at zoom 13**, plus 20 moving vehicles.
+Four vehicles change bearing at a requested 20 Hz; sixteen move with unchanged
+non-ripple visuals. Station count is not a count of independent rendered pins.
+The native suites' test frame clock is advanced at wall-clock pace during these
+measurements. This is an illustrative instrumented debug workload, not a release
+benchmark or production capacity claim.
 
-| Check | Result |
-| --- | --- |
-| Shared geometry/camera/marker contract tests | 19 passed |
-| Controlled migration tool tests | 4 passed |
-| Existing app unit tests | 1 passed per flavor |
-| Huawei native/UI suite, HOP-LX9, Android 16 / API 36 | 10 passed |
-| Google native/UI suite, Pixel 4 emulator, Android 15 / API 35 | 10 passed |
-| Google/Huawei debug and release builds | Passed |
-| Earlier library layout's Android lint | Passed; SDK version-update warnings remain intentional |
-| Shared-source and runtime dependency isolation | Passed |
-| Debug/release APK DEX class isolation | Passed |
+| Provider / environment | Stations | Java allocations during window | Bitmap frames / icon requests | Marker creations after warmup |
+| --- | ---: | ---: | ---: | ---: |
+| Google / emulator | 200 | 32,587,872 bytes | 392 / 392 | 0 |
+| Google / emulator | 1,000 | 32,755,808 bytes | 392 / 392 | 0 |
+| Huawei / phone | 200 | 256,359,752 bytes | 376 / 376 | 0 |
+| Huawei / phone | 1,000 | 252,444,640 bytes | 368 / 368 | 0 |
 
-Native tests validate camera commands before readiness, completed animations,
-cancellation on map disposal, camera-state reuse, custom Compose-marker pixels,
-marker identity after movement, conditional marker removal, multiple maps,
-flavor-specific styles, and the complete live-ride screen across real activity
-recreation. Existing picker tests exercise confirmation, cancellation, location
-timeout, and saved state.
+The sixteen static-looking moving vehicles produce no new icons. Only the four
+rotating vehicles generate bitmap frames. No vehicle or cluster marker is
+recreated in these steady measurement windows.
 
-The Huawei tests caught a startup cancellation: Map Kit could abandon an animation
-submitted before its first rendered frame. HMS animation now waits for the native
-loaded callback; initial move commands still apply once the view is laid out.
+| Provider | Stations | Timing source | Samples | Median | 95th percentile |
+| --- | ---: | --- | ---: | ---: | ---: |
+| Google | 200 | Window total frame duration | 111 frames | 17.43 ms | 18.94 ms |
+| Google | 1,000 | Window total frame duration | 109 frames | 17.46 ms | 18.89 ms |
+| Huawei | 200 | Native SurfaceFlinger presentation intervals | 186 presentations | 16.64 ms | 49.91 ms |
+| Huawei | 1,000 | Native SurfaceFlinger presentation intervals | 186 presentations | 16.64 ms | 49.91 ms |
 
-## GMS-free runtime verification remains incomplete
+**These timing columns measure different things and cannot rank the providers.**
+The phone's HMS SurfaceView produces no Window.FrameMetrics samples. Its actual
+native surface presentation timestamps are therefore collected instead; a
+presentation interval is not CPU/GPU frame execution duration. The Google
+emulator exposes window frame durations but no corresponding map SurfaceView
+samples to this collector. Hardware, refresh behavior and instrumentation differ.
 
-The physical Huawei device contains microG. Its passing tests establish that the
-HMS renderer works there, not that the device is a clean GMS-free environment.
+`art.gc.bytes-allocated` is cumulative Java allocation traffic for the process,
+including SDK, probe and test work. It is not retained heap growth and excludes a
+complete native/GPU allocation accounting. HMS shows substantial allocation
+traffic with these animated bitmap inputs; production device/load profiling is
+required before accepting an animated fleet size. Reusing mutable bitmaps that
+native code may still reference was deliberately not used to reduce that number.
 
-An additional experiment disabled Google Play Services on the emulator. The HMS
-SDK could not obtain a map delegate (`not load map hmsState = 1`), so four native
-renderer tests timed out. Installing the physical device's HMS Core APK into the
-emulator did not make that environment usable. This experiment does not establish
-GMS-free runtime compatibility. Google Play Services was restored, the temporary
-HMS Core emulator install was removed, and the final Google suite passed afterward.
+`iconRequests` counts native HMS icon-setting/creation requests and Google icon
+submissions through the official Compose wrapper/custom cluster renderer. These
+are observable SDK requests, **not measured GPU texture uploads**; SDK caching
+can change the number of actual uploads. No claim of direct GPU upload counts or
+unknown production capacity is made.
 
-APK inspection independently proves that the Huawei APK defines no Google Maps,
-Maps Compose, or Google fused-location classes; dependency graphs also reject those
-SDKs. A genuine HMS-only supported device is still required to close the remaining
-runtime acceptance criterion. The Huawei device's system services were not disabled.
+## Commands and evidence
 
-## Production follow-up
+```sh
+./gradlew :app:testGoogleDebugUnitTest :app:testHuaweiDebugUnitTest \
+  :app:assembleGoogleDebug :app:assembleHuaweiDebug \
+  :app:assembleGoogleRelease :app:assembleHuaweiRelease \
+  :app:assembleGoogleDebugAndroidTest :app:assembleHuaweiDebugAndroidTest \
+  :app:verifyMapIsolation --console=plain
+python3 -m unittest discover -s scripts -p 'test_*.py'
+python3 scripts/map_inventory.py --check-shared
+python3 scripts/verify_map_apks.py \
+  --google app/build/outputs/apk/google/debug/app-google-debug.apk \
+  --huawei app/build/outputs/apk/huawei/debug/app-huawei-debug.apk
+# Repeat the DEX check for the release APKs.
+```
 
-The original 120+ source files and the implementations of `LiveBusTransportMarker`
-and `defaultMapSetting()` were not supplied. Use the inventory and migration tools
-against that application and implement any APIs outside the documented subset.
-The demo's release configuration has shrinking disabled; its release build result
-does not constitute an R8 test of the production application. Long-duration fleet
-load, pixel-by-pixel polygon-mask parity and production network/service failures
-also need validation with the original app's assets and workload.
+Use an explicit device for native suites:
+
+```sh
+ANDROID_SERIAL=emulator-5554 ./gradlew :app:connectedGoogleDebugAndroidTest
+ANDROID_SERIAL=YOUR_HUAWEI_SERIAL ./gradlew :app:connectedHuaweiDebugAndroidTest
+```
+
+The configured test-only `MapTestRunner` lets test activities display above a
+keyguard via Android's normal show-when-locked API; it does not unlock the phone
+or change production activity behavior. The phone was also unlocked for the final
+suites. Its original stay-awake setting is restored after testing. The surface
+profile collector requires API 31+; the two tested devices run API 35/36.
+
+Current local logs:
+
+- `/tmp/maps-production-helpers-validation.log`: final unit/build/dependency matrix.
+- `/tmp/maps-helpers-final-google.log`: full 20-test Google suite and raw profile.
+- `/tmp/maps-helpers-final-huawei.log`: full 17-test HMS suite and raw profile.
+- `/tmp/maps-hms-mask-baseline.log` and `/tmp/maps-hms-native-holes-tests.log`:
+  failing native mask reproduction/initialization-only attempts.
+- `/tmp/maps-final-mask-identity-google.log` and `/tmp/maps-final-mask-identity-huawei.log`:
+  strengthened second-click identity check after geometry/zoom changes, passed on both.
+- Unit XML/HTML: `app/build/test-results/` and `app/build/reports/tests/`.
+- Native screenshots/profiles copied locally under `app/build/outputs/map-validation/`.
+
+Logs and generated artifacts are local evidence, not source files required by a
+fresh checkout. The unit membership baseline is checked in under
+`app/src/test/resources/cluster-membership-3.8.2.txt`. CI builds both variants,
+runs unit/Python contracts and inspects dependencies/DEX; device suites require
+separate native execution.
+
+## Production release gates
+
+The full 120-file app, its module graph and SDK-bound Java/binary dependencies are
+not supplied. Remaining helper implementations, the original artwork and real
+GeoJSON are unavailable. LiveTrackingMap theme/queue/stale-vehicle logic is outside
+this extension and remains untouched. The demo still has shrinking disabled;
+production R8/configuration validation is required. The connected phone includes
+microG components: verified SDK/dependency/APK isolation does not establish a
+GMS/microG-free runtime. That separate environment remains required.
+
+The current HMS scene already rejects invalid style JSON by checking setMapStyle's
+result. No new claim of adding that preexisting validation is made. See
+[implementation details](details.md) for the corrected audit and supported scope.

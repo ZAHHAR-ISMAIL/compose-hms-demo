@@ -4,6 +4,13 @@ import android.location.Location
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
@@ -53,21 +60,24 @@ fun GoogleMap(
     onMapLoaded: () -> Unit = {},
     onMyLocationButtonClick: () -> Boolean = { false },
     onMyLocationClick: (Location) -> Unit = {},
-    content: @Composable () -> Unit = {},
+    content: @Composable @GoogleMapComposable () -> Unit = {},
 ) {
     val observation = LocalDemoObservation.current
     SideEffect { observation?.onCamera(cameraPositionState) }
+    var viewport by remember { mutableStateOf(IntSize.Zero) }
+    val density = LocalDensity.current.density
     RenderHuaweiMap(
-        modifier, cameraPositionState, properties, uiSettings, contentPadding, contentDescription,
+        modifier.onSizeChanged { viewport = IntSize((it.width / density).toInt(), (it.height / density).toInt()) }, cameraPositionState, properties, uiSettings, contentPadding, contentDescription,
         MapEvents(onMapClick, onMapLongClick, { observation?.onLoaded(); onMapLoaded() },
             onMyLocationButtonClick, onMyLocationClick),
     ) {
-        CompositionLocalProvider(LocalCameraPositionState provides cameraPositionState, content = content)
+        CompositionLocalProvider(LocalCameraPositionState provides cameraPositionState, LocalMapViewport provides viewport, content = content)
     }
 }
 
 /** Update retained native HMS overlays through this flavor's internal rendering functions. */
 @Composable
+@GoogleMapComposable
 fun Marker(
     state: MarkerState = rememberUpdatedMarkerState(),
     alpha: Float = 1f,
@@ -93,6 +103,7 @@ fun Marker(
 
 /** Update retained native HMS overlays through this flavor's internal rendering functions. */
 @Composable
+@GoogleMapComposable
 fun MarkerComposable(
     vararg keys: Any,
     state: MarkerState = rememberUpdatedMarkerState(),
@@ -119,6 +130,7 @@ fun MarkerComposable(
 
 /** Update retained native HMS overlays through this flavor's internal rendering functions. */
 @Composable
+@GoogleMapComposable
 fun Polygon(
     points: List<LatLng>,
     clickable: Boolean = false,
@@ -137,6 +149,7 @@ fun Polygon(
 
 /** Update retained native HMS overlays through this flavor's internal rendering functions. */
 @Composable
+@GoogleMapComposable
 fun Polyline(
     points: List<LatLng>,
     clickable: Boolean = false,
@@ -153,6 +166,7 @@ fun Polyline(
 
 /** Update retained native HMS overlays through this flavor's internal rendering functions. */
 @Composable
+@GoogleMapComposable
 fun Circle(
     center: LatLng,
     clickable: Boolean = false,
@@ -183,3 +197,5 @@ internal fun ObserveMapForDemo(
 
 private class DemoObservation(val onCamera: (CameraPositionState) -> Unit, val onLoaded: () -> Unit)
 private val LocalDemoObservation = staticCompositionLocalOf<DemoObservation?> { null }
+
+internal val LocalMapViewport = staticCompositionLocalOf { IntSize.Zero }

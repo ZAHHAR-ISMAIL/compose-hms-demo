@@ -22,6 +22,14 @@ import kotlinx.coroutines.CompletableDeferred
 
 /** One retained overlay resource in the map composition, with an explicit native cleanup hook. */
 internal interface OverlayNode { fun remove() {} }
+
+/** Scene-owned input handlers are ordered with ordinary marker declarations, never SDK listeners. */
+internal interface MarkerInputNode : OverlayNode {
+    fun onMarkerClick(marker: Marker): Boolean
+    fun onInfoWindowClick(marker: Marker) {}
+    fun onInfoWindowClose(marker: Marker) {}
+    fun onInfoWindowLongClick(marker: Marker) {}
+}
 // Compose requires a root for its tree; this bookkeeping root has no visible native overlay.
 private object RootNode : OverlayNode
 
@@ -34,7 +42,7 @@ private object RootNode : OverlayNode
  * that removing/disposing the composition releases those objects instead of leaving map overlays.
  */
 internal class HuaweiMapApplier(val scene: HuaweiMapScene) : AbstractApplier<OverlayNode>(RootNode) {
-    private val nodes = mutableListOf<OverlayNode>()
+    private val nodes get() = scene.nodes
     // Compose offers top-down and bottom-up insertion hooks. Register only once, on bottom-up.
     override fun insertTopDown(index: Int, instance: OverlayNode) = Unit
     override fun insertBottomUp(index: Int, instance: OverlayNode) { nodes.add(index, instance) }
@@ -64,14 +72,19 @@ internal class HuaweiMapScene(val host: HuaweiMapHostView, val map: HuaweiMap, v
     private val camera = HuaweiCameraController(map, renderingReady)
     // These registries keep native SDK IDs inside the implementation. Screens receive shared
     // handle interfaces, not the concrete HMS marker/polygon/line/circle classes.
+    val nodes = mutableListOf<OverlayNode>()
     private val markers = mutableMapOf<String, MarkerNode>()
     val polygons = mutableMapOf<String, PolygonNode>()
+    val maskOutlines = mutableMapOf<String, PolygonNode>()
     val polylines = mutableMapOf<String, PolylineNode>()
     val circles = mutableMapOf<String, CircleNode>()
     private var moving = false
     private var reason = CameraMoveStartedReason.UNKNOWN
     private var previousProperties: MapProperties? = null
     private var previousSettings: MapUiSettings? = null
+    private var previousPadding: List<Int>? = null
+    private var previousDescription: String? = null
+    private var descriptionApplied = false
     private var released = false
 
     init {
@@ -95,10 +108,19 @@ internal class HuaweiMapScene(val host: HuaweiMapHostView, val map: HuaweiMap, v
         map.setOnCameraMoveListener { updateCamera() }
         map.setOnCameraIdleListener { moving = false; updateCamera() }
         map.setOnCameraMoveCanceledListener { moving = false; updateCamera() }
-        map.setOnMarkerClickListener { marker -> markers[marker.id]?.let { it.events.onClick(HuaweiMarker(marker)) } ?: false }
-        map.setOnInfoWindowClickListener { marker -> markers[marker.id]?.events?.onInfoWindowClick?.invoke(HuaweiMarker(marker)) }
-        map.setOnInfoWindowCloseListener { marker -> markers[marker.id]?.events?.onInfoWindowClose?.invoke(HuaweiMarker(marker)) }
-        map.setOnInfoWindowLongClickListener { marker -> markers[marker.id]?.events?.onInfoWindowLongClick?.invoke(HuaweiMarker(marker)) }
+        map.setOnMarkerClickListener(::dispatchMarkerClick)
+        map.setOnInfoWindowClickListener { marker -> nodes.toList().forEach { node ->
+            if (node is MarkerNode && node.marker.id == marker.id) node.events.onInfoWindowClick(HuaweiMarker(marker))
+            else if (node is MarkerInputNode) node.onInfoWindowClick(marker)
+        } }
+        map.setOnInfoWindowCloseListener { marker -> nodes.toList().forEach { node ->
+            if (node is MarkerNode && node.marker.id == marker.id) node.events.onInfoWindowClose(HuaweiMarker(marker))
+            else if (node is MarkerInputNode) node.onInfoWindowClose(marker)
+        } }
+        map.setOnInfoWindowLongClickListener { marker -> nodes.toList().forEach { node ->
+            if (node is MarkerNode && node.marker.id == marker.id) node.events.onInfoWindowLongClick(HuaweiMarker(marker))
+            else if (node is MarkerInputNode) node.onInfoWindowLongClick(marker)
+        } }
         map.setOnMarkerDragListener(object : HuaweiMap.OnMarkerDragListener {
             // During a user drag the SDK becomes the position source. MarkerNode avoids writing
             // an older app position back while isDragging is true, and the final event clears it.
@@ -106,13 +128,43 @@ internal class HuaweiMapScene(val host: HuaweiMapHostView, val map: HuaweiMap, v
             override fun onMarkerDrag(marker: Marker) { markers[marker.id]?.state?.updateFromMap(marker.position.shared(), true) }
             override fun onMarkerDragEnd(marker: Marker) { markers[marker.id]?.state?.updateFromMap(marker.position.shared(), false) }
         })
-        map.setOnPolygonClickListener { polygons[it.id]?.onClick?.invoke(HuaweiPolygon(it)) }
-        map.setOnPolylineClickListener { polylines[it.id]?.onClick?.invoke(HuaweiPolyline(it)) }
+        map.setOnPolygonClickListener { polygons[it.id]?.let { node -> node.onClick(node.handle) } }
+        map.setOnPolylineClickListener { line ->
+            polylines[line.id]?.onClick?.invoke(HuaweiPolyline(line))
+            maskOutlines[line.id]?.let { it.onClick(it.handle) }
+        }
         map.setOnCircleClickListener { circles[it.id]?.onClick?.invoke(HuaweiCircle(it)) }
+    }
+
+    // Match Maps Compose's ordered InputHandler traversal: false falls through to subsequent
+    // handlers/nodes and finally the SDK default behavior. Ownership never implies consumption.
+    internal fun dispatchMarkerClick(marker: Marker): Boolean {
+        for (node in nodes.toList()) {
+            val handled = when {
+                node is MarkerNode && node.marker.id == marker.id -> node.events.onClick(HuaweiMarker(marker))
+                node is MarkerInputNode -> node.onMarkerClick(marker)
+                else -> false
+            }
+            if (handled) return true
+        }
+        return false
     }
 
     /** Attach the command receiver only after native width/height can support bounds fitting. */
     fun attachCamera() = host.whenLaidOut { if (!released) cameraState.attach(cameraOwner, camera) }
+
+    /** Identical padding must not repeatedly reframe/interfere with a native camera animation. */
+    fun updateViewport(padding: List<Int>, description: String?) {
+        if (padding != previousPadding) {
+            map.setPadding(padding[0],padding[1],padding[2],padding[3])
+            previousPadding = padding.toList()
+        }
+        if (!descriptionApplied || description != previousDescription) {
+            map.setContentDescription(description)
+            previousDescription = description
+            descriptionApplied = true
+        }
+    }
     private fun updateCamera() {
         // Write the observation directly; using the public position setter would issue another
         // native move and turn a camera callback into a command/callback feedback loop.
@@ -170,6 +222,7 @@ internal class HuaweiMapScene(val host: HuaweiMapHostView, val map: HuaweiMap, v
 
     /** Called by a ComposeNode factory once for that node, not for each new vehicle position. */
     fun marker(state: MarkerState, options: MarkerOptions, events: MarkerEvents, needsIcon: Boolean): MarkerNode {
+        com.demo.hmscomposeapp.map.MapPerformanceProbe.marker(false)
         val native = checkNotNull(map.addMarker(com.huawei.hms.maps.model.MarkerOptions().position(state.position.native())))
         return MarkerNode(native, state, options, events, needsIcon) { markers.remove(native.id) }
             .also { markers[native.id] = it }
@@ -225,7 +278,10 @@ internal class MarkerNode(
         if (previous?.anchor != value.anchor) marker.setAnchor(value.anchor.x, value.anchor.y)
         if (previous?.draggable != value.draggable) marker.isDraggable = value.draggable
         if (previous?.flat != value.flat) marker.isFlat = value.flat
-        if (previous?.icon !== value.icon && (value.icon != null || !needsIcon)) marker.setIcon(value.icon?.native())
+        if (previous?.icon !== value.icon && (value.icon != null || !needsIcon)) {
+            if (value.icon != null) com.demo.hmscomposeapp.map.MapPerformanceProbe.icon()
+            marker.setIcon(value.icon?.native())
+        }
         if (previous?.infoWindowAnchor != value.infoWindowAnchor) marker.setInfoWindowAnchor(value.infoWindowAnchor.x, value.infoWindowAnchor.y)
         if (previous?.rotation != value.rotation) marker.rotation = value.rotation
         if (previous?.snippet != value.snippet) marker.snippet = value.snippet
@@ -240,23 +296,72 @@ internal class MarkerNode(
     override fun remove() { state.detach(this); onRemove(); marker.remove() }
 }
 
-/**
- * Retained polygon; points and hole rings are converted again only when their lists change.
- * Hole geometry is passed through to HMS, which performs the mask/hole rendering natively.
- * Stroke width is in pixels, matching the shared API and Google's native overlay behavior.
- */
-internal class PolygonNode(val polygon: Polygon, var onClick: (com.demo.maps.model.Polygon) -> Unit, private val onRemove: () -> Unit) : OverlayNode {
+/** One logical overlay owns either a native polygon or the bounded world-mask fill/outline group. */
+internal class PolygonNode(private val scene: HuaweiMapScene, options: PolygonOptions,
+    var onClick: (com.demo.maps.model.Polygon) -> Unit) : OverlayNode {
+    private val logicalId = "hms-mask-${java.util.UUID.randomUUID()}"
+    private val fills = mutableListOf<Polygon>()
+    private val outlines = mutableListOf<Polyline>()
     private var previous: PolygonOptions? = null
+    private var mask = false
+    private var nativeId: String? = null
+    private var currentTag: Any? = options.tag
+    val handle = object : com.demo.maps.model.Polygon {
+        override val id get() = if (mask) logicalId else checkNotNull(nativeId)
+        override var tag: Any?
+            get() = currentTag
+            set(value) { currentTag = value; fills.forEach { it.tag = value }; outlines.forEach { it.tag = value } }
+    }
+    init { update(options) }
     fun update(value: PolygonOptions) {
-        if (previous?.points != value.points) polygon.points = value.points.map { it.native() }
-        if (previous?.holes != value.holes) polygon.holes = value.holes.map { ring -> ring.map { it.native() } }
-        polygon.isClickable = value.clickable; polygon.fillColor = value.fillColor.toArgb()
-        polygon.isGeodesic = value.geodesic; polygon.strokeColor = value.strokeColor.toArgb()
-        polygon.strokeWidth = value.strokeWidth; polygon.tag = value.tag
-        polygon.isVisible = value.visible; polygon.zIndex = value.zIndex
+        val useMask = isWorldMask(value)
+        val geometryChanged = previous?.points != value.points || previous?.holes != value.holes || mask != useMask
+        val rebuild = previous == null || mask != useMask || (useMask && geometryChanged)
+        if (rebuild) {
+            // Compute and validate before discarding the previous valid overlay.
+            val pieces = if (useMask) mergeMaskPieces(worldMaskPieces(value.points,value.holes)) else emptyList()
+            clearNative()
+            mask = useMask
+            if (mask) {
+                pieces.forEach { fill ->
+                    val native = checkNotNull(scene.map.addPolygon(com.huawei.hms.maps.model.PolygonOptions()
+                        .addAll(fill.points.map { it.native() }).apply { fill.holes.forEach { ring -> addHole(ring.map { it.native() }) } }
+                        .strokeWidth(0f).fillColor(value.fillColor.toArgb())
+                        .visible(value.visible).zIndex(value.zIndex).clickable(value.clickable)))
+                    fills.add(native); scene.polygons[native.id] = this
+                }
+                (listOf(value.points)+value.holes).map(::normalizeRing).forEach { ring ->
+                    val native = checkNotNull(scene.map.addPolyline(com.huawei.hms.maps.model.PolylineOptions()
+                        .addAll((ring+ring.first()).map { it.native() }).color(value.strokeColor.toArgb())
+                        .width(value.strokeWidth).visible(value.visible && value.strokeWidth > 0f).zIndex(value.zIndex).clickable(value.clickable)))
+                    outlines.add(native); scene.maskOutlines[native.id] = this
+                }
+            } else {
+                val native = checkNotNull(scene.map.addPolygon(value.nativeOptions()))
+                fills.add(native); nativeId = native.id; scene.polygons[native.id] = this
+            }
+        } else if (geometryChanged) {
+            fills.single().points = normalizeRing(value.points).map { it.native() }
+            fills.single().holes = normalizedHoles(value).map { ring -> ring.map { it.native() } }
+        }
+        fills.forEach { polygon ->
+            polygon.isClickable = value.clickable; polygon.fillColor = value.fillColor.toArgb()
+            polygon.isGeodesic = value.geodesic; polygon.strokeColor = value.strokeColor.toArgb()
+            polygon.strokeWidth = if (mask) 0f else value.strokeWidth
+            polygon.isVisible = value.visible; polygon.zIndex = value.zIndex
+        }
+        outlines.forEach { line ->
+            line.color = value.strokeColor.toArgb(); line.width = value.strokeWidth
+            line.isVisible = value.visible && value.strokeWidth > 0f; line.zIndex = value.zIndex; line.isClickable = value.clickable
+        }
+        if (previous?.tag != value.tag || geometryChanged) handle.tag = value.tag
         previous = value
     }
-    override fun remove() { onRemove(); polygon.remove() }
+    private fun clearNative() {
+        fills.forEach { scene.polygons.remove(it.id); it.remove() }; fills.clear()
+        outlines.forEach { scene.maskOutlines.remove(it.id); it.remove() }; outlines.clear()
+    }
+    override fun remove() = clearNative()
 }
 
 /** Retained route line: geometry changes replace points, style changes mutate the same handle. */
@@ -286,7 +391,7 @@ internal class CircleNode(val circle: Circle, var onClick: (com.demo.maps.model.
 // Shared callback handles deliberately expose only the operations supported by our contract.
 // They forward to the live SDK object, so callback-driven tag/position/info-window changes apply
 // to that actual overlay while the screen remains independent of Huawei SDK imports.
-private class HuaweiMarker(private val marker: Marker) : com.demo.maps.model.Marker {
+internal class HuaweiMarker(private val marker: Marker) : com.demo.maps.model.Marker {
     override val id get() = marker.id
     override var position: LatLng get() = marker.position.shared(); set(value) { marker.position = value.native() }
     override var rotation: Float get() = marker.rotation; set(value) { marker.rotation = value }

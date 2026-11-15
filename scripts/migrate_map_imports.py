@@ -7,14 +7,18 @@ from pathlib import Path
 from map_inventory import SKIP
 
 MAPPING = {
+    **{f"com.google.maps.android.clustering.{name}": f"com.demo.maps.clustering.{name}"
+       for name in ["ClusterItem", "Cluster"]},
     **{f"com.google.android.gms.maps.{name}": f"com.demo.maps.{name}"
        for name in ["CameraUpdate", "CameraUpdateFactory", "MapsInitializer"]},
     **{f"com.google.android.gms.maps.model.{name}": f"com.demo.maps.model.{name}"
        for name in ["LatLng", "LatLngBounds", "CameraPosition", "MapStyleOptions", "BitmapDescriptor", "BitmapDescriptorFactory", "Marker", "Polygon", "Polyline", "Circle"]},
     **{f"com.google.maps.android.compose.{name}": f"com.demo.maps.compose.{name}"
-       for name in ["GoogleMap", "CameraPositionState", "CameraMoveStartedReason", "MarkerState", "MapProperties", "MapUiSettings", "MapType", "Marker", "MarkerComposable", "Polygon", "Polyline", "Circle", "rememberCameraPositionState", "rememberMarkerState", "rememberUpdatedMarkerState", "currentCameraPositionState"]},
+       for name in ["GoogleMapComposable", "GoogleMap", "CameraPositionState", "CameraMoveStartedReason", "MarkerState", "MapProperties", "MapUiSettings", "MapType", "Marker", "MarkerComposable", "Polygon", "Polyline", "Circle", "rememberCameraPositionState", "rememberMarkerState", "rememberUpdatedMarkerState", "currentCameraPositionState"]},
 }
-REFERENCE = re.compile(r"\bcom\.(?:google\.android\.gms\.maps|google\.maps\.android\.compose)\.[\w.*]+")
+# Utility imports (clustering, renderers, geometry, KTX, etc.) also retain Google SDK coupling.
+# They must stop a shared-source migration until a compatible implementation is provided.
+REFERENCE = re.compile(r"\bcom\.(?:google\.android\.gms\.maps|google\.maps\.android)\.[\w.*]+")
 REPLACE = re.compile(r"(?<![\w.])(?:" + "|".join(re.escape(k) for k in sorted(MAPPING, key=len, reverse=True)) + r")(?!\w)")
 
 

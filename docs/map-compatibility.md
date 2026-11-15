@@ -6,10 +6,14 @@ impact, and the native alias design. This document is the API/migration referenc
 
 The shared Kotlin/Compose API is `com.demo.maps`. Both flavors compile the same
 screen code. Google aliases its native SDK/Compose models and state, and forwards
-objects directly to the official Maps Compose 8.2.2 library; Huawei
+objects directly to the official Maps Compose 6.5.0 library; Huawei
 uses Map Kit 6.15.1.318 with an independent map subcomposition and retained overlays.
 This implements the API used by the supplied bus-map example, not the entire
 Google Maps SDK. The original application's other 120+ files are not in this repo.
+
+See [the detailed production-source audit](details.md) before migrating the larger
+application: the supplied clustering contract is now implemented; other utility
+APIs and missing production helpers still need an inventory.
 
 ## One app module, two flavors
 
@@ -40,7 +44,8 @@ The same file is compiled into both Google and Huawei builds.
 The pasted snippet omitted package/non-map imports and its external dependencies.
 The runnable file adds the missing compile context above a marked source boundary.
 `BusOnDemandDemoSupport.kt` supplies clearly labeled stand-ins for the unavailable
-transport model, theme, icon helper, map settings, marker helper, and logger.
+transport model, theme, icon helper, map settings and logger. The subsequently supplied live-bus bitmap helper is now
+implemented separately with the authorized state/caching fixes.
 Both comparison copies use neutral `DemoTheme`/`DemoIcon` names and local app
 drawables. This naming cleanup applies equally to both copies, separately from the
 13 map-reference changes; no external application namespace or resource aliases
@@ -87,8 +92,10 @@ to SDK selection, which is entirely a build decision.
 | `MarkerState`, remembered marker state helpers | `com.demo.maps.compose` | Native Google state/saver; existing HMS position/drag/info-window control and scalar saver |
 | `GoogleMap`, `MapProperties`, `MapUiSettings`, `MapType` | `com.demo.maps.compose` | Map properties, UI controls, gestures, padding, loaded/tap/location callbacks |
 | `Marker`, `MarkerComposable` | `com.demo.maps.compose` | Identity, bitmap/resource icons, Compose icons, rotation, anchor, z-index, drag/click/info-window callbacks |
-| `Polygon` | `com.demo.maps.compose` | Points, holes, color, stroke width, geodesic, click, tag, visibility, z-index |
+| `Polygon` | `com.demo.maps.compose` | Points, holes, color, stroke width, geodesic, click, tag, visibility, z-index; bounded HMS world-mask fallback |
 | `Polyline`, `Circle` | `com.demo.maps.compose` | Geometry, colors/width/radius, geodesic for lines, click/tag/visibility/z-index |
+| `GoogleMapComposable` | `com.demo.maps.compose` | Native Google annotation alias; HMS map composition target |
+| `ClusterItem`, `Cluster`, `AppClusteringWrapper` | `com.demo.maps.clustering` and `com.demo.maps.compose` | Native Google utility types/grouping; matching HMS helper with retained markers |
 | `MapStyleOptions`, bitmap descriptors | `com.demo.maps.model` | Raw resource styles; bitmap, resource and default marker icons |
 
 For an existing screen, replace imports; retain calls such as:
@@ -114,6 +121,12 @@ GoogleMap(
 the matching flavor API. On Huawei, that API calls HMS MapView and HMS overlays; the screen
 does not need Huawei-specific branches or a second implementation.
 
+`MapType.isSupported()` exposes the flavor's actual map-type capability. Google
+retains its native types/modes. HMS rejects HYBRID and SATELLITE MapProperties
+explicitly: Huawei documents those Android SDK modes as unsupported. The demo
+labels its disabled hybrid choice; production should handle that capability in its
+map-type selector. See [details and Huawei's reference](details.md#unsupported-map-types-are-explicit).
+
 ## State, lifecycle and animation rules
 
 - Call map/state commands on the main thread. Each camera state belongs to one map;
@@ -135,8 +148,8 @@ does not need Huawei-specific branches or a second implementation.
   icons are retained; visual keys/content invalidation refresh their bitmap. The
   shared instrumentation test checks actual pixels and stable native marker IDs.
 - Compose marker content is a bitmap, not an interactive UI subtree. Put interaction
-  in marker callbacks. For continuous cross-provider ripples, animate a map circle
-  rather than regenerating a complex icon for every movement frame.
+  in marker callbacks. The supplied bus helper intentionally renders its animated
+  bitmap at 20 FPS while stopped and caches unchanged non-ripple visuals.
 - Google keeps original SDK Parcelable models and official camera/marker savers.
   Huawei keeps primitive-coordinate savers; its custom LatLng is not Parcelable.
   Persisted SDK objects, navigation arguments and serialization adapters require an
@@ -191,15 +204,15 @@ does not need Huawei-specific branches or a second implementation.
 
 The cross-flavor contract does not supply an SDK-shaped `GoogleMap` object, raw `MapView`,
 fragments, `MapEffect`, projection, `GoogleMapOptions`, Street View, advanced markers,
-clustering, tile/ground overlays, line cap/pattern types, or composable info windows.
+arbitrary utility APIs, tile/ground overlays, line cap/pattern types, or composable info windows.
 These usages need additional Huawei support and suitable public entry points;
 shared code fails compilation until supported. Native Google alias members alone
 do not add Huawei implementations. Unsupported features are not silently ignored. Java, XML, reflection and precompiled libraries
 that expose Google classes cannot be made compatible by Kotlin import replacement.
 
-The supplied `LiveBusTransportMarker` and `defaultMapSetting()` implementations
-were not provided. Audit them against the supported contract before migrating the
-original screen. Search/geocoding/directions and external route data are separate
+The supplied live-bus helper, stop helper and vector conversion are integrated.
+The production `defaultMapSetting()` and several live-tracking helpers remain
+unavailable. Audit those against the supported contract before production acceptance. Search/geocoding/directions and external route data are separate
 services and are not automatically redirected by changing the map renderer.
 
 The original sample has remembered properties and marker state without update keys;

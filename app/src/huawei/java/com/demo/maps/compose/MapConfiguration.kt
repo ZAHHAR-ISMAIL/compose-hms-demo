@@ -7,6 +7,9 @@ import com.demo.maps.model.MapStyleOptions
 /** Huawei configuration models; the Google flavor aliases the official Compose models. */
 enum class MapType { NONE, NORMAL, SATELLITE, TERRAIN, HYBRID }
 
+/** The SDK declares satellite constants but documents those modes as unsupported on Android. */
+fun MapType.isSupported(): Boolean = this != MapType.SATELLITE && this != MapType.HYBRID
+
 @Immutable
 data class MapProperties(
     val isBuildingEnabled: Boolean = false,
@@ -19,7 +22,12 @@ data class MapProperties(
     val maxZoomPreference: Float = 21f,
     val minZoomPreference: Float = 3f,
 ) {
-    init { require(minZoomPreference <= maxZoomPreference) }
+    init {
+        require(minZoomPreference <= maxZoomPreference)
+        if (!mapType.isSupported()) throw UnsupportedOperationException(
+            "HMS Map Kit does not support $mapType maps. Select NORMAL, TERRAIN or NONE.",
+        )
+    }
 }
 
 @Immutable

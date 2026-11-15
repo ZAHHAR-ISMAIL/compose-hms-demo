@@ -29,7 +29,7 @@ def verify(apk, provider):
     with zipfile.ZipFile(apk) as archive:
         classes = {name for file in archive.namelist() if re.fullmatch(r"classes\d*\.dex", file)
                    for name in dex_classes(archive.read(file))}
-    forbidden = ("Lcom/google/android/gms/maps/", "Lcom/google/android/gms/location/", "Lcom/google/maps/android/") if provider == "huawei" else ("Lcom/huawei/hms/maps/", "Lcom/huawei/hms/location/")
+    forbidden = ("Lcom/google/android/gms/maps/", "Lcom/google/android/gms/location/", "Lcom/google/maps/android/") if provider == "huawei" else ("Lcom/huawei/hms/maps/", "Lcom/huawei/hms/location/", "Learcut4j/", "Lcom/demo/maps/clustering/internal/")
     offending = sorted(name for name in classes if name.startswith(forbidden))
     required = "Lcom/demo/maps/compose/MapsComposeKt;"
     if offending or required not in classes:
@@ -56,6 +56,8 @@ def verify(apk, provider):
         "Lcom/demo/maps/model/Polygon;",
         "Lcom/demo/maps/model/Polyline;",
         "Lcom/demo/maps/model/Circle;",
+        "Lcom/demo/maps/clustering/ClusterItem;",
+        "Lcom/demo/maps/clustering/Cluster;",
     }
     if provider == "google":
         unexpected = sorted(compatibility_types & classes)
@@ -70,6 +72,8 @@ def verify(apk, provider):
             raise SystemExit(f"{apk}: missing native Google classes: {sorted(native_types - classes)}")
     elif not compatibility_types <= classes:
         raise SystemExit(f"{apk}: missing Huawei compatibility classes: {sorted(compatibility_types - classes)}")
+    if provider == "huawei" and "Learcut4j/Earcut;" not in classes:
+        raise SystemExit(f"{apk}: missing pinned HMS mask triangulator")
     print(f"PASS {apk}: {provider} types/Compose API present; no opposite-provider map/location classes ({len(classes)} classes checked)")
 
 

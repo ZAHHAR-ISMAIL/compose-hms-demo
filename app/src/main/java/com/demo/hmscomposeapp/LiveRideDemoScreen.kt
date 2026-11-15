@@ -13,10 +13,15 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.demo.hmscomposeapp.busondemand.BusOnDemandRideMap
 import com.demo.hmscomposeapp.busondemand.LiveLineTransport
+import com.demo.hmscomposeapp.busondemand.LocalRippleTiming
+import com.demo.hmscomposeapp.busondemand.RippleTiming
+import androidx.compose.ui.platform.LocalContext
+import com.demo.hmscomposeapp.map.RegionBoundsLocalProvider
 import com.demo.maps.CameraUpdateFactory
 import com.demo.maps.compose.CameraPositionState
 import com.demo.maps.compose.ObserveMapForDemo
 import com.demo.maps.compose.MapType
+import com.demo.maps.compose.isSupported
 import com.demo.maps.model.LatLng
 import com.demo.maps.model.LatLngBounds
 import java.util.Queue
@@ -31,6 +36,7 @@ internal fun LiveRideDemoScreen(onBack: () -> Unit) {
     var running by rememberSaveable { mutableStateOf(true) }
     var night by rememberSaveable { mutableStateOf(false) }
     var hybrid by rememberSaveable { mutableStateOf(false) }
+    val hybridSupported = MapType.HYBRID.isSupported()
     var replay by rememberSaveable { mutableIntStateOf(0) }
     val baseConfiguration = LocalConfiguration.current
     val configuration = remember(baseConfiguration, night) {
@@ -41,7 +47,9 @@ internal fun LiveRideDemoScreen(onBack: () -> Unit) {
     }
     val route = remember { DemoMapData.route.map { LatLng(it.latitude, it.longitude) } }
     val bounds = remember(route) { LatLngBounds.builder().apply { route.forEach(::include) }.build() }
-    val region = remember { listOf(LatLng(24.725, 46.66), LatLng(24.675, 46.66), LatLng(24.675, 46.70), LatLng(24.725, 46.70)) }
+    val context = LocalContext.current
+    val region = remember(context) { RegionBoundsLocalProvider(context).getCoordinatesPair().riyadh }
+    val rippleTiming = remember(running) { RippleTiming(enabled = running) }
     val scope = rememberCoroutineScope()
 
     Column(Modifier.fillMaxSize()) {
@@ -50,6 +58,7 @@ internal fun LiveRideDemoScreen(onBack: () -> Unit) {
             Text("BusOnDemandRideMap", style = MaterialTheme.typography.subtitle1)
             Text(" · ${stringResource(R.string.map_provider_name)}", style = MaterialTheme.typography.caption)
         }
+        Text("Synthetic region boundary · substitute bus/tracker artwork", style = MaterialTheme.typography.caption)
         // The pasted screen remembers properties without mapType/theme keys. Recreate only the
         // demo instance for these controls, preserving the supplied implementation verbatim.
         key(night, hybrid, replay) {
@@ -70,14 +79,14 @@ internal fun LiveRideDemoScreen(onBack: () -> Unit) {
                     })
             }
             Box(Modifier.fillMaxWidth().weight(1f)) {
-                CompositionLocalProvider(LocalConfiguration provides configuration) {
+                CompositionLocalProvider(LocalConfiguration provides configuration, LocalRippleTiming provides rippleTiming) {
                     ObserveMapForDemo(onCamera = { camera = it }, onLoaded = { loaded = true }) {
                         BusOnDemandRideMap(
                             isLiveActive = running,
                             fromCoord = route.first(),
                             toCoord = route.last(),
                             riyadhGeo = region,
-                            mapType = if (hybrid) MapType.HYBRID else MapType.NORMAL,
+                            mapType = if (hybrid && hybridSupported) MapType.HYBRID else MapType.NORMAL,
                             bottomContentHeight = 72.dp,
                             modifier = Modifier.fillMaxSize(),
                             liveTransport = transport,
@@ -97,7 +106,9 @@ internal fun LiveRideDemoScreen(onBack: () -> Unit) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
             Button(onClick = { running = !running }) { Text(stringResource(if (running) R.string.pause_ride else R.string.resume_ride)) }
             TextButton(onClick = { night = !night }) { Text(stringResource(if (night) R.string.day_style else R.string.night_style)) }
-            TextButton(onClick = { hybrid = !hybrid }) { Text(stringResource(if (hybrid) R.string.normal_map else R.string.hybrid_map)) }
+            TextButton(enabled = hybridSupported, onClick = { hybrid = !hybrid }) {
+                Text(if (hybridSupported) stringResource(if (hybrid) R.string.normal_map else R.string.hybrid_map) else "Hybrid unavailable")
+            }
             TextButton(onClick = { replay++ }) { Text("Replay") }
         }
     }

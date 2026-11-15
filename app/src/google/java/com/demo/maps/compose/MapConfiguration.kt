@@ -8,3 +8,6 @@ package com.demo.maps.compose
 typealias MapType = com.google.maps.android.compose.MapType
 typealias MapProperties = com.google.maps.android.compose.MapProperties
 typealias MapUiSettings = com.google.maps.android.compose.MapUiSettings
+
+/** A flavor capability check, preserving Google's original enum/type identity. */
+fun MapType.isSupported(): Boolean = true

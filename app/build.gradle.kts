@@ -27,7 +27,7 @@ android {
         versionCode = 1
         versionName = "1.0"
 
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        testInstrumentationRunner = "com.demo.hmscomposeapp.MapTestRunner"
         vectorDrawables.useSupportLibrary = true
     }
 
@@ -108,8 +108,14 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material:material")
 
-    add("googleImplementation", "com.google.android.gms:play-services-location:21.4.0")
-    add("googleImplementation", "com.google.maps.android:maps-compose:8.2.2")
+    add("googleImplementation", "com.google.android.gms:play-services-location:21.3.0") { version { strictly("21.3.0") } }
+    add("googleImplementation", "com.google.android.gms:play-services-maps:19.0.0") {
+        version { strictly("19.0.0") }
+    }
+    add("googleImplementation", "com.google.maps.android:maps-compose:6.5.0") { version { strictly("6.5.0") } }
+    add("googleImplementation", "com.google.maps.android:android-maps-utils:3.8.2") {
+        version { strictly("3.8.2") }
+    }
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 
     testImplementation("junit:junit:4.13.2")
@@ -122,6 +128,10 @@ dependencies {
 
     add("huaweiImplementation", "com.huawei.hms:location:6.16.0.302")
     add("huaweiImplementation", "com.huawei.hms:maps:6.15.1.318")
+    // HMS cannot render the supplied world-envelope mask reliably; ordinary polygons stay native.
+    add("huaweiImplementation", "io.github.earcut4j:earcut4j:2.2.2") {
+        version { strictly("2.2.2") }
+    }
 }
 
 tasks.register("verifyMapIsolation") {
@@ -139,10 +149,20 @@ tasks.register("verifyMapIsolation") {
                     if (flavor == "huawei") {
                         id.group == "com.google.maps.android" ||
                             (id.group == "com.google.android.gms" && id.name in setOf("play-services-maps", "play-services-location"))
-                    } else id.group == "com.huawei.hms" && id.name in setOf("maps", "location")
+                    } else (id.group == "com.huawei.hms" && id.name in setOf("maps", "location")) || id.group == "io.github.earcut4j"
                 }
                 check(forbidden.isEmpty()) { "${flavor}${buildType} includes forbidden SDKs: $forbidden" }
-                logger.lifecycle("PASS ${flavor}${buildType}: map and location dependencies are isolated")
+                val resolved = graph.allComponents.mapNotNull { it.moduleVersion }.associate { "${it.group}:${it.name}" to it.version }
+                val expected = if (flavor == "google") mapOf(
+                    "com.google.android.gms:play-services-maps" to "19.0.0",
+                    "com.google.android.gms:play-services-location" to "21.3.0",
+                    "com.google.maps.android:maps-compose" to "6.5.0",
+                    "com.google.maps.android:android-maps-utils" to "3.8.2",
+                ) else mapOf("com.huawei.hms:maps" to "6.15.1.318", "com.huawei.hms:location" to "6.16.0.302",
+                    "io.github.earcut4j:earcut4j" to "2.2.2")
+                expected.forEach { (module, version) -> check(resolved[module] == version) { "$module resolved to ${resolved[module]}, expected $version" } }
+                check("com.google.maps.android:maps-utils-ktx" !in resolved) { "Unused Maps Utils KTX must not enter this demo" }
+                logger.lifecycle("PASS ${flavor}${buildType}: isolated dependencies and exact production baseline verified")
             }
         }
     }

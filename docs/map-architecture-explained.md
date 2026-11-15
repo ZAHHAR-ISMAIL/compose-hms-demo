@@ -16,13 +16,20 @@ app/src/
 │   ├── MainActivity.kt                    initializes the selected SDK once
 │   ├── busondemand/BusOnDemandRideMap.kt   your shared supplied screen
 │   ├── LiveRideDemoScreen.kt              sample data and comparison controls
+│   ├── ClusteringDemoScreen.kt            real wrapper contract, synthetic stations
+│   ├── busondemand/LiveBusTransportMarker.kt  supplied bitmap helper + authorized fixes
 │   └── map/
 │       ├── DemoMapRenderer.kt             small launcher/picker component and test seam
-│       └── LocationProvider.kt            location contract, separate from map rendering
+│       ├── LocationProvider.kt            location contract, separate from map rendering
+│       ├── BusStopMarker.kt               shared stop helper, updated coordinate state
+│       ├── MarkerBitmaps.kt               drawable validation and rasterization
+│       ├── RegionBoundsLocalProvider.kt   synchronous cached asset loader
+│       └── MapPerformanceProbe.kt         optional demo/test counters
 │
 ├── google/java/com/demo/maps/
 │   ├── MapsInitializer.kt                 direct Google SDK initialization
 │   ├── CameraUpdate.kt                    native command/factory aliases
+│   ├── clustering/Cluster.kt              native utility interface aliases
 │   ├── model/
 │   │   ├── Geometry.kt                    native coordinate/bounds/camera aliases
 │   │   └── MapResources.kt                native style/icon/handle aliases
@@ -41,6 +48,8 @@ app/src/
         ├── MapsCompose.kt                 the same screen-facing function signatures
         ├── MapState.kt                    HMS-compatible camera/marker state
         ├── MapConfiguration.kt            HMS-compatible properties/settings
+        ├── AppClusteringWrapper.kt         same helper contract, retained HMS markers
+        ├── GoogleMapComposable.kt          HMS map composition target annotation
         └── internal/                      native HMS implementation details
             ├── HuaweiMapContent.kt        native MapView and nested map composition
             ├── HuaweiMapHostView.kt       lifecycle and saved native state
@@ -48,8 +57,16 @@ app/src/
             ├── HuaweiCameraController.kt  native animation/cancellation bridge
             ├── CameraController.kt        internal camera-state command contract
             ├── ComposeMarkerRenderer.kt   Compose content rendered as marker bitmaps
-            └── OverlayParameters.kt       internal overlay arguments and callbacks
+            ├── OverlayParameters.kt       internal overlay arguments and callbacks
+            ├── HuaweiClusterNode.kt        marker ownership, jobs and ordered callbacks
+            ├── PolygonGeometry.kt         native initialization and ring normalization
+            └── WorldMaskGeometry.kt       triangulation, longitude clipping and edge merging
 ```
+
+Huawei also has `maps/clustering/Cluster.java`, `ClusterItem.java`, and a bounded
+`clustering/internal` adaptation of the pinned utility algorithm/index/projection.
+Google-only `SceneOwnedMarkerManager.java` suppresses a utility listener hook so
+official Maps Compose retains listener ownership. These are helper internals.
 
 There is no `app/src/main/java/com/demo/maps` folder. The folders above are packages
 inside the existing app, not extra modules or build configurations.
@@ -130,8 +147,8 @@ Google owns the native view, overlays, camera behavior and marker bitmap renderi
 
 [MapsCompose.kt](../app/src/huawei/java/com/demo/maps/compose/MapsCompose.kt) exposes
 the same function signatures and calls the native HMS implementation in `internal`.
-HMS models/state retain the existing behavior; this cleanup changes organization
-and removes the former routing layer.
+HMS models/state retain the existing camera/marker ownership behavior. This
+extension adds clustering and fixes the bounded world-mask pattern internally.
 
 The implementation files serve concrete Android/Compose responsibilities:
 
@@ -142,7 +159,7 @@ The implementation files serve concrete Android/Compose responsibilities:
 | [HuaweiMapApplier.kt](../app/src/huawei/java/com/demo/maps/compose/internal/HuaweiMapApplier.kt) | Creates overlays once, updates them in place, handles events and removes them on disposal. |
 | [HuaweiCameraController.kt](../app/src/huawei/java/com/demo/maps/compose/internal/HuaweiCameraController.kt) | Translates deferred camera commands and bridges animation callbacks to cancellable coroutines. |
 | [CameraController.kt](../app/src/huawei/java/com/demo/maps/compose/internal/CameraController.kt) | Connects HMS camera state to that native controller. |
-| [ComposeMarkerRenderer.kt](../app/src/huawei/java/com/demo/maps/compose/internal/ComposeMarkerRenderer.kt) | Draws Compose marker content into cached native bitmap icons. |
+| [ComposeMarkerRenderer.kt](../app/src/huawei/java/com/demo/maps/compose/internal/ComposeMarkerRenderer.kt) | Draws invalidated Compose content into immutable native bitmap icons. |
 | [OverlayParameters.kt](../app/src/huawei/java/com/demo/maps/compose/internal/OverlayParameters.kt) | Holds arguments/callbacks for retained HMS nodes to compare and update. |
 
 These files implement the Compose integration missing from the native MapView.
@@ -200,7 +217,62 @@ classes or exchange saved-state formats between providers. Google keeps native
 Parcelable models/savers; HMS keeps the existing scalar savers.
 
 See [the API and migration reference](map-compatibility.md) for the supported subset,
-and [the validation record](map-validation.md) for actual results. The existing HMS
-world-mask fill difference and the lack of a clean GMS-free device remain recorded
-limitations; this structural cleanup does not resolve those rendering/environment
-issues.
+and [the validation record](map-validation.md) for actual results. The world-mask
+implementation is bounded to the supplied non-geodesic world envelope; real
+production geometry remains unavailable. A clean GMS-free runtime environment
+and the wider production module/shrinking configuration remain release gates.
+
+
+## 5. Where clustering and the helper fixes belong
+
+No map framework was reintroduced into main. The new shared files are actual
+application helpers and a demonstration screen. Flavor-specific clustering is
+necessary because the supplied helper contains native Google managers, renderers
+and listener hooks. Moving those details behind the SAME helper signature keeps
+the calling screens shared.
+
+```kotlin
+// One caller in main; both flavors provide this function.
+AppClusteringWrapper(
+    items = stations,
+    onClusterClick = { cluster -> onGroupSelected(cluster); true },
+    onClusterItemClick = { item -> onStationSelected(item); false },
+    onExternalItemClick = { marker -> onOtherMarker(marker); false },
+    markerImageResId = R.drawable.station,
+)
+```
+
+Google uses native aliases for Cluster/ClusterItem, its native 3.8.2 grouping
+algorithm, and a custom native renderer. Huawei uses matching Java getter
+interfaces and a bounded adaptation of that exact grouping math. Both calculate
+viewport size in dp, use the size >= 2 threshold and retain marker identity.
+The multiple Java math files replace an unavailable utility implementation on
+HMS; they are not extra modules or copies of feature screens.
+
+Huawei has one native listener per map. The cluster node is visited in the same
+composition order as vehicle nodes. A true callback consumes the event; a false
+callback falls through. Removing a cluster node releases its own markers/job,
+without removing vehicle markers or the map.
+
+The supplied LiveBusTransportMarker is shared Android Canvas code. It now keeps
+one state per vehicle, renders the supplied 20 FPS stopped ripple and caches
+unchanged non-ripple visuals. Native Google objects still pass directly to the
+official library. Helper fixes are intentional behavior corrections; they are
+not evidence that every production screen needs a rewrite.
+
+The HMS world mask triangulates/validates projected rings and clips the mesh into
+longitude bands. It merges shared edges within each band before native rendering,
+removing internal translucent-antialias seams. Original outlines remain separate;
+all faces/outlines share one logical overlay and are removed together. Ordinary
+polygons remain on their native path, and the Google path remains native.
+
+[Implementation details](details.md) explain the renderer disposal adaptation,
+annotation targets, boundary cache, licensing and missing production inputs.
+
+
+`MapType.isSupported()` is a small flavor capability function, not a registry or
+provider object. It lets a map-type selector handle HMS's documented lack of
+hybrid/satellite support. HMS MapProperties rejects those unsupported requests
+explicitly. Google still uses its native enum/properties and supports those modes.
+The comparison harness disables its HMS hybrid choice; the supplied screen body
+and established import-only comparison stay unchanged.

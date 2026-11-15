@@ -21,6 +21,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.savedstate.compose.LocalSavedStateRegistryOwner
 import com.demo.maps.MapsInitializer
+import com.demo.maps.compose.GoogleMapComposable
 import com.demo.maps.compose.CameraPositionState
 import com.demo.maps.compose.MapProperties
 import com.demo.maps.compose.MapUiSettings
@@ -45,7 +46,7 @@ internal fun RenderHuaweiMap(
     contentPadding: PaddingValues,
     contentDescription: String?,
     events: MapEvents,
-    content: @Composable () -> Unit,
+    content: @Composable @GoogleMapComposable () -> Unit,
 ) {
     // 1. Take lifecycle/state ownership from this Compose screen (which may be a navigation
     // destination). A saveable unique key prevents two maps from sharing the same native Bundle.
@@ -96,6 +97,11 @@ internal fun RenderHuaweiMap(
             // 3. One scene contains native handles/listeners for this map. Its applier turns
             // the screen's Marker/Polygon/etc. declarations into retained native objects.
             val scene = HuaweiMapScene(loaded.host, loaded.map, cameraPositionState, latest.value.events, cameraOwner)
+            // Apply initial native options before a pending camera command can attach. The map
+            // subcomposition's first SideEffect may otherwise run after that command starts.
+            val initial = latest.value
+            scene.update(initial.properties, initial.settings)
+            scene.updateViewport(initial.padding, initial.description)
             val composition = Composition(HuaweiMapApplier(scene), compositionContext)
             var disposed = false
             // The same cleanup can be reached through Compose disposal or host destruction.
@@ -115,8 +121,7 @@ internal fun RenderHuaweiMap(
                 SideEffect {
                     scene.events = params.events
                     scene.update(params.properties, params.settings)
-                    loaded.map.setPadding(params.padding[0], params.padding[1], params.padding[2], params.padding[3])
-                    loaded.map.setContentDescription(params.description)
+                    scene.updateViewport(params.padding, params.description)
                 }
                 // This is the original screen's map content: key(), remember(), conditionals,
                 // and shared overlay functions execute with HuaweiMapApplier as their applier.
@@ -131,13 +136,16 @@ internal fun RenderHuaweiMap(
 
 /** Obtain the current map's scene; an overlay outside map content has no native map to use. */
 @Composable
-private fun scene(): HuaweiMapScene = (currentComposer.applier as? HuaweiMapApplier)?.scene
+@GoogleMapComposable
+internal fun scene(): HuaweiMapScene = (currentComposer.applier as? HuaweiMapApplier)?.scene
     ?: error("Map overlays must be composed inside GoogleMap content")
 
 @Composable
+@GoogleMapComposable
 internal fun RenderHuaweiMarker(state: MarkerState, options: MarkerOptions, events: MarkerEvents) = RenderMarker(state, options, events, false)
 
 @Composable
+@GoogleMapComposable
 internal fun RenderHuaweiMarkerComposable(keys: Array<out Any>, state: MarkerState, options: MarkerOptions, events: MarkerEvents, content: @Composable () -> Unit) {
     // HMS markers consume bitmap icons. Render the UI separately and feed its descriptor into
     // the same retained marker node used for regular markers. needsIcon hides it until ready.
@@ -147,6 +155,7 @@ internal fun RenderHuaweiMarkerComposable(keys: Array<out Any>, state: MarkerSta
 
 /** Create one native marker per Compose node, then update it in place as live data changes. */
 @Composable
+@GoogleMapComposable
 private fun RenderMarker(state: MarkerState, options: MarkerOptions, events: MarkerEvents, needsIcon: Boolean) {
     val scene = scene()
     ComposeNode<MarkerNode, HuaweiMapApplier>(
@@ -163,20 +172,17 @@ private fun RenderMarker(state: MarkerState, options: MarkerOptions, events: Mar
 }
 
 @Composable
+@GoogleMapComposable
 internal fun RenderHuaweiPolygon(options: PolygonOptions, onClick: (Polygon) -> Unit) {
     val scene = scene()
     ComposeNode<PolygonNode, HuaweiMapApplier>(
-        factory = {
-            // Register by SDK ID for click dispatch. Removing this Compose node unregisters
-            // the handle and removes the native polygon, including all of its holes.
-            val polygon = checkNotNull(scene.map.addPolygon(com.huawei.hms.maps.model.PolygonOptions().addAll(options.points.map { it.native() })))
-            PolygonNode(polygon, onClick) { scene.polygons.remove(polygon.id) }.also { scene.polygons[polygon.id] = it }
-        },
+        factory = { PolygonNode(scene, options, onClick) },
         update = { set(options) { update(it) }; set(onClick) { this.onClick = it } },
     )
 }
 
 @Composable
+@GoogleMapComposable
 internal fun RenderHuaweiPolyline(options: PolylineOptions, onClick: (Polyline) -> Unit) {
     // Lines follow the same create-once/update/remove lifecycle as polygon nodes.
     val scene = scene()
@@ -190,6 +196,7 @@ internal fun RenderHuaweiPolyline(options: PolylineOptions, onClick: (Polyline) 
 }
 
 @Composable
+@GoogleMapComposable
 internal fun RenderHuaweiCircle(options: CircleOptions, onClick: (Circle) -> Unit) {
     // Center/radius/style changes mutate one circle, useful for a moving location/ripple ring.
     val scene = scene()
@@ -211,5 +218,5 @@ private data class Parameters(
     val padding: List<Int>,
     val description: String?,
     val events: MapEvents,
-    val content: @Composable () -> Unit,
+    val content: @Composable @GoogleMapComposable () -> Unit,
 )

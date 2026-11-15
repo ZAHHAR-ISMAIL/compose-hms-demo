@@ -1,0 +1,1 @@
+{"type":"FeatureCollection","features":[{"type":"Feature","properties":{"description":"Synthetic rectangular demo boundary; not production geography"},"geometry":{"type":"Polygon","coordinates":[[[-179.999,85],[-179.999,-85],[179.999,-85],[179.999,85],[-179.999,85]],[[46.66,24.725],[46.66,24.675],[46.70,24.675],[46.70,24.725],[46.66,24.725]]]}}]}

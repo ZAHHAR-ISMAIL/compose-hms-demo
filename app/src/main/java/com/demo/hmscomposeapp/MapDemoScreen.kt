@@ -45,17 +45,19 @@ internal fun MapDemo(
         suppliedLocationProvider ?: createLocationProvider(context.applicationContext)
     }
     val state = rememberMapDemoState(locationProvider)
+    var showClusters by rememberSaveable { mutableStateOf(false) }
     var showLiveRide by rememberSaveable { mutableStateOf(false) }
 
     Surface(Modifier.fillMaxSize().systemBarsPadding()) {
-        if (showLiveRide) LiveRideDemoScreen(onBack = { showLiveRide = false })
+        if (showClusters) ClusteringDemoScreen(onBack = { showClusters = false })
+        else if (showLiveRide) LiveRideDemoScreen(onBack = { showLiveRide = false })
         else if (state.isPicking) LocationPicker(mapRenderer, state)
-        else Launcher(mapRenderer, state, onOpenLiveRide = { showLiveRide = true })
+        else Launcher(mapRenderer, state, onOpenLiveRide = { showLiveRide = true }, onOpenClusters = { showClusters = true })
     }
 }
 
 @Composable
-private fun Launcher(mapRenderer: DemoMapRenderer, state: MapDemoState, onOpenLiveRide: () -> Unit) {
+private fun Launcher(mapRenderer: DemoMapRenderer, state: MapDemoState, onOpenLiveRide: () -> Unit, onOpenClusters: () -> Unit) {
     Column(Modifier.fillMaxSize()) {
         Text(
             text = stringResource(R.string.map_demo_title),
@@ -78,6 +80,7 @@ private fun Launcher(mapRenderer: DemoMapRenderer, state: MapDemoState, onOpenLi
             Button(onClick = state::openPicker) {
                 Text(stringResource(R.string.pick_location))
             }
+            TextButton(onClick = onOpenClusters) { Text("Clustering demo") }
             TextButton(onClick = onOpenLiveRide) { Text(stringResource(R.string.live_ride_demo)) }
         }
     }

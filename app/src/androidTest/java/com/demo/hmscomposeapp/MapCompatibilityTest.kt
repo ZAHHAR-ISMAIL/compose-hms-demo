@@ -100,6 +100,9 @@ class MapCompatibilityTest {
         compose.waitUntil(5_000) { animation.isCancelled }
         compose.runOnIdle { showing = true }
         compose.waitUntil(30_000) { loaded.get() >= 2 }
+        // Tiles/map loading and camera-idle are independent native callbacks. Reattaching the
+        // state issues an initial move, which may still be settling when onMapLoaded fires.
+        compose.waitUntil(5_000) { !camera.isMoving }
         compose.runOnIdle { assertFalse(camera.isMoving) }
     }
 

@@ -53,7 +53,7 @@ internal fun rememberMarkerIcon(scene: HuaweiMapScene, keys: Array<out Any>, con
     return result
 }
 
-/** Owns one marker's offscreen view and reusable bitmap; SDK icon upload remains in MarkerNode. */
+/** Owns one marker's offscreen view and latest immutable bitmap; SDK icon upload remains in MarkerNode. */
 private class ComposeMarkerRenderer(
     private val parent: HuaweiMapHostView,
     compositionContext: CompositionContext,
@@ -119,14 +119,10 @@ private class ComposeMarkerRenderer(
             check(width > 0 && height > 0) { "MarkerComposable content must have a non-zero size" }
             require(width <= 2048 && height <= 2048) { "MarkerComposable bitmap exceeds 2048 pixels" }
             container.layout(0, 0, width, height)
-            // Reuse the pixel buffer while dimensions stay equal. Clear first so transparent
-            // regions do not retain pixels from the preceding icon/content state.
-            val image = bitmap?.takeIf { it.width == width && it.height == height }
-                ?: createBitmap(width, height).also { bitmap = it }
-            image.eraseColor(android.graphics.Color.TRANSPARENT)
+            // A previous descriptor may still be read by native code. Publish fresh pixels on
+            // visual invalidation; never overwrite or recycle a bitmap already handed to HMS.
+            val image = createBitmap(width, height).also { bitmap = it }
             composeView.draw(Canvas(image))
-            // Publish a new descriptor even if the Bitmap instance was reused: consumers must
-            // observe that its pixels changed and upload a refreshed native icon.
             onBitmap(BitmapDescriptor.Image(image))
         } finally { container.drawingBitmap = false }
     }
