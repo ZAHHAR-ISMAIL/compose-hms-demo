@@ -1,5 +1,0 @@
-Portions adapted from googlemaps/android-maps-utils, version 3.8.2.
-Copyright 2013–2023 Google Inc. Licensed under Apache-2.0.
-Changes: application namespace and HMS coordinate/camera types; Java getter access and the original geometry Point instead of its deprecated projection alias.
-Only grouping algorithms, spatial index, projection and Cluster/ClusterItem contracts are included.
-Upstream: https://github.com/googlemaps/android-maps-utils/tree/v3.8.2

@@ -7,6 +7,8 @@ ROOT = Path(__file__).resolve().parents[1]
 MARKER = "// BEGIN PASTED SCREEN: only map imports and the qualified initializer below differ.\n"
 
 
+@unittest.skipUnless((ROOT / 'docs/reference/bus-on-demand').is_dir(),
+                     'Comparison fixtures are kept in local-only docs/')
 class PastedBusMapTest(unittest.TestCase):
     def test_runnable_screen_matches_the_comparison_copy(self):
         source = (ROOT / 'app/src/main/java/com/demo/hmscomposeapp/busondemand/BusOnDemandRideMap.kt').read_text()

@@ -18,3 +18,4 @@ __pycache__/
 .cxx
 .gradle-local/
 local.properties
+/docs/

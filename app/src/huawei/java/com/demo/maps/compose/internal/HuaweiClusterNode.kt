@@ -1,15 +1,17 @@
 package com.demo.maps.compose.internal
 
-import androidx.compose.ui.unit.IntSize
 import com.demo.hmscomposeapp.map.bitmapDescriptorFromVector
 import com.demo.maps.clustering.Cluster
 import com.demo.maps.clustering.ClusterItem
-import com.demo.maps.clustering.internal.algorithm.NonHierarchicalViewBasedAlgorithm
+import android.os.Looper
+import android.view.View
 import com.demo.maps.model.CameraPosition
+import com.demo.maps.model.LatLngBounds
 import com.demo.maps.model.Marker as MarkerHandle
 import com.huawei.hms.maps.model.Marker
 import com.huawei.hms.maps.model.MarkerOptions
 import kotlinx.coroutines.*
+import kotlin.coroutines.resume
 
 /** Owns ONLY this layer's markers and job; ordinary vehicle markers belong to other nodes. */
 internal class HuaweiClusterNode<T : ClusterItem>(private val scene: HuaweiMapScene, private val scope: CoroutineScope) : MarkerInputNode {
@@ -21,15 +23,17 @@ internal class HuaweiClusterNode<T : ClusterItem>(private val scene: HuaweiMapSc
     private var iconResource: Int? = null
     private var icon: com.huawei.hms.maps.model.BitmapDescriptor? = null
 
-    fun submit(items: List<T>, camera: CameraPosition, viewport: IntSize, resource: Int) {
+    fun submit(items: List<T>, camera: CameraPosition, resource: Int) {
         job?.cancel()
         job = scope.launch(Dispatchers.Main.immediate) {
-            // Each generation owns its algorithm; disposal/cancellation cannot race mutations.
+            // The camera host's layout callback belongs to camera attachment. Use our own
+            // cancellable listener rather than replacing that callback with a cluster request.
+            awaitLayout()
+            ensureActive()
+            val nativeBounds = scene.map.projection.visibleRegion.latLngBounds
+            val bounds = LatLngBounds(nativeBounds.southwest.shared(), nativeBounds.northeast.shared())
             val clusters = withContext(Dispatchers.Default) {
-                val algorithm = NonHierarchicalViewBasedAlgorithm<T>(viewport.width, viewport.height)
-                algorithm.addItems(items)
-                algorithm.onCameraChange(camera)
-                algorithm.getClusters(camera.zoom)
+                groupHmsItems(items, camera.zoom, bounds)
             }
             ensureActive()
             if (disposed) return@launch
@@ -41,7 +45,8 @@ internal class HuaweiClusterNode<T : ClusterItem>(private val scene: HuaweiMapSc
                 val position = cluster?.position ?: checkNotNull(item).position
                 val existing = entries[key]
                 val entry = existing ?: Entry(checkNotNull(scene.map.addMarker(MarkerOptions()
-                    .position(position.native()).icon(icon).anchor(.5f, if (cluster != null) 1f else .5f))), cluster, item)
+                    .position(position.native()).icon(icon).clusterable(false)
+                    .anchor(.5f, if (cluster != null) 1f else .5f))), cluster, item)
                     .also { entries[key] = it; com.demo.hmscomposeapp.map.MapPerformanceProbe.marker(true) }
                 entry.cluster = cluster; entry.item = item
                 val nativePosition = position.native()
@@ -56,11 +61,31 @@ internal class HuaweiClusterNode<T : ClusterItem>(private val scene: HuaweiMapSc
                 if (changedIcon && existing != null) { entry.marker.setIcon(icon); com.demo.hmscomposeapp.map.MapPerformanceProbe.icon() }
             }
             for (cluster in clusters) {
-                // maps-utils 3.8.2 uses >= minClusterSize, and the supplied renderer sets it to 2.
+                // Keep the application threshold even though HMS membership differs from Google.
                 if (cluster.size >= 2) put(ClusterKey(cluster.items.toSet()), cluster, null)
                 else cluster.items.forEach { put(it, null, it) }
             }
             entries.keys.filter { it !in retained }.forEach { entries.remove(it)?.marker?.remove() }
+        }
+    }
+    private suspend fun awaitLayout() = suspendCancellableCoroutine<Unit> { continuation ->
+        val view = scene.host.mapView
+        if (view.width > 0 && view.height > 0 && !view.isLayoutRequested) {
+            continuation.resume(Unit)
+        } else {
+            val listener = object : View.OnLayoutChangeListener {
+                override fun onLayoutChange(v: View, l: Int, t: Int, r: Int, b: Int, ol: Int, ot: Int, or: Int, ob: Int) {
+                    if (v.width > 0 && v.height > 0) {
+                        v.removeOnLayoutChangeListener(this)
+                        if (continuation.isActive) continuation.resume(Unit)
+                    }
+                }
+            }
+            view.addOnLayoutChangeListener(listener)
+            continuation.invokeOnCancellation {
+                if (Looper.myLooper() == Looper.getMainLooper()) view.removeOnLayoutChangeListener(listener)
+                else view.post { view.removeOnLayoutChangeListener(listener) }
+            }
         }
     }
     private data class ClusterKey(val items: Set<*>)

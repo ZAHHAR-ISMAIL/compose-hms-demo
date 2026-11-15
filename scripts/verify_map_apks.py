@@ -29,8 +29,14 @@ def verify(apk, provider):
     with zipfile.ZipFile(apk) as archive:
         classes = {name for file in archive.namelist() if re.fullmatch(r"classes\d*\.dex", file)
                    for name in dex_classes(archive.read(file))}
-    forbidden = ("Lcom/google/android/gms/maps/", "Lcom/google/android/gms/location/", "Lcom/google/maps/android/") if provider == "huawei" else ("Lcom/huawei/hms/maps/", "Lcom/huawei/hms/location/", "Learcut4j/", "Lcom/demo/maps/clustering/internal/")
+    forbidden = ("Lcom/google/android/gms/maps/", "Lcom/google/android/gms/location/", "Lcom/google/maps/android/") if provider == "huawei" else ("Lcom/huawei/hms/maps/", "Lcom/huawei/hms/location/", "Learcut4j/")
     offending = sorted(name for name in classes if name.startswith(forbidden))
+    copied_algorithms = sorted(name for name in classes if name.startswith("Lcom/demo/maps/clustering/internal/"))
+    if copied_algorithms:
+        raise SystemExit(f"{apk}: removed HMS algorithm port is still packaged: {copied_algorithms[:10]}")
+    grid_engine = "Lcom/demo/maps/compose/internal/HuaweiGridClusteringKt;"
+    if (grid_engine in classes) != (provider == "huawei"):
+        raise SystemExit(f"{apk}: HMS-only grid engine present={grid_engine in classes}, provider={provider}")
     required = "Lcom/demo/maps/compose/MapsComposeKt;"
     if offending or required not in classes:
         raise SystemExit(f"{apk}: isolation failed; Compose API present={required in classes}; forbidden classes={offending[:10]}")

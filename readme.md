@@ -29,6 +29,9 @@ and an ordinary live vehicle on the same native map. Its artwork and geography a
 labelled demo substitutions. Google pins Maps Compose 6.5.0 / Maps 19.0.0 / Utils
 3.8.2 / Location 21.3.0; HMS versions remain unchanged. HMS hybrid/satellite modes
 are explicitly unsupported; the demo disables that choice instead of showing blank tiles.
+Clustering has separate flavor implementations: Google keeps its native utility;
+HMS uses one compact grid engine instead of a copied utility algorithm tree. Group
+membership can differ, while the shared helper and complete member callbacks stay the same.
 
 The **Live ride demo** now executes the supplied **BusOnDemandRideMap** screen.
 Its queue processing, interpolation, camera effects, polygons, marker UI, and bearing

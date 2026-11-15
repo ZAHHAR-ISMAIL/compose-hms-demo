@@ -8,7 +8,7 @@ import org.junit.Test
 import java.security.MessageDigest
 import kotlin.random.Random
 
-/** Both variants replay the same fixtures. Golden membership comes from native maps-utils 3.8.2. */
+/** Google-only regression baseline. HMS intentionally uses a different grouping algorithm. */
 class ClusteringAlgorithmTest {
     private data class Station(val id: Int, val lat: Double, val lon: Double) : ClusterItem {
         override fun getPosition() = LatLng(lat,lon)
@@ -36,7 +36,7 @@ class ClusteringAlgorithmTest {
         val actual = results.joinToString("\n")+"\n"
         println("NATIVE_CLUSTER_GOLDEN_BEGIN\n${actual}NATIVE_CLUSTER_GOLDEN_END")
         val expected = javaClass.getResourceAsStream("/cluster-membership-3.8.2.txt")?.bufferedReader()?.use { it.readText() }
-        assertNotNull("Record the pinned native Google baseline before accepting the HMS port",expected)
+        assertNotNull("Record the pinned native Google grouping baseline",expected)
         assertEquals(expected,actual)
     }
     @Test fun viewFilteringAndOneTwoThreeItemThresholdInputs() {

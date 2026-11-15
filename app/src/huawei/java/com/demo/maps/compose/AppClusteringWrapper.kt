@@ -9,7 +9,11 @@ import com.demo.maps.compose.internal.HuaweiMapApplier
 import com.demo.maps.compose.internal.scene
 import com.demo.maps.model.Marker
 
-/** Same helper contract as Google; all native manager/listener details stay in this flavor. */
+/**
+ * Same helper/callback contract as Google, with independent HMS grid grouping. The caller keeps
+ * its screen code; complete member lists survive viewport culling even when groups differ.
+ * Native marker ownership and listener dispatch stay in this flavor's retained node.
+ */
 @Composable
 @GoogleMapComposable
 fun <T : ClusterItem> AppClusteringWrapper(
@@ -31,7 +35,7 @@ fun <T : ClusterItem> AppClusteringWrapper(
             // Do not regroup every frame during a gesture; fixed-zoom idle panning DOES regroup.
             set(listOf(snapshot, viewport, if (!camera.isMoving) camera.position else null, markerImageResId)) {
                 if (!camera.isMoving && viewport.width > 0 && viewport.height > 0)
-                    submit(snapshot, camera.position, viewport, markerImageResId)
+                    submit(snapshot, camera.position, markerImageResId)
             }
         },
     )
